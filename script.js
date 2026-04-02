@@ -516,11 +516,17 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Unified pointer handler — covers mouse clicks and touch taps
+// Pointer events cover mouse + touch on all modern browsers
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (state === 'playing') player.jump();
 });
+
+// Fallback for browsers without Pointer Events (older mobile WebViews)
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === 'playing') player.jump();
+}, { passive: false });
 
 /* ============================================================
    INIT
