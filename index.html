@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Dash — Endless Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- ── Start Screen ── -->
+    <div id="startScreen" class="overlay">
+      <h1 class="title">DASH</h1>
+      <p class="subtitle">Endless Runner</p>
+      <p class="best-tag">Best &nbsp;<span id="startBest">0</span></p>
+      <button id="startBtn" class="btn">Play</button>
+      <p class="hint">Space · Click · Tap &nbsp;to jump</p>
+    </div>
+
+    <!-- ── Game Over Screen ── -->
+    <div id="gameOverScreen" class="overlay hidden">
+      <h2 class="over-title">Game Over</h2>
+      <div class="score-row">
+        <div class="score-block">
+          <span class="score-label">Score</span>
+          <span id="finalScore" class="score-num">0</span>
+        </div>
+        <div class="score-block">
+          <span class="score-label">Best</span>
+          <span id="finalBest" class="score-num">0</span>
+        </div>
+      </div>
+      <button id="restartBtn" class="btn">Play Again</button>
+    </div>
+
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
