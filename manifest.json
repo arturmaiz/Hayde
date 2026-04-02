@@ -1,0 +1,18 @@
+{
+  "name": "Dash — Endless Runner",
+  "short_name": "Dash",
+  "description": "A polished endless runner game",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#07071a",
+  "theme_color": "#07071a",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
