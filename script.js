@@ -71,24 +71,117 @@ function rrect(x, y, w, h, r) {
 }
 
 /* ============================================================
-   SOUND HOOKS
-   ============================================================
-   Replace the body of snd() with real Web Audio API calls to
-   add sound effects.  e.g.:
-     const AC = new AudioContext();
-     function tone(freq, dur) {
-       AC.resume();
-       const o = AC.createOscillator();
-       const g = AC.createGain();
-       o.frequency.value = freq;
-       g.gain.setValueAtTime(0.15, AC.currentTime);
-       g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
-       o.connect(g); g.connect(AC.destination);
-       o.start(); o.stop(AC.currentTime + dur);
-     }
+   AUDIO  — Web Audio API (no files needed)
    ============================================================ */
-function snd(/* name: 'jump' | 'land' | 'die' */) {
-  // placeholder — wire up AudioContext here
+let AC = null;
+
+function getAC() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+
+/** Play a simple synthesised tone */
+function tone(freq, dur, type = 'sine', vol = 0.18) {
+  try {
+    const ac = getAC();
+    const o  = ac.createOscillator();
+    const g  = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, ac.currentTime);
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + dur);
+  } catch (e) { /* silently ignore if audio blocked */ }
+}
+
+/** Two-tone sweep */
+function sweep(f1, f2, dur, type = 'sine', vol = 0.18) {
+  try {
+    const ac = getAC();
+    const o  = ac.createOscillator();
+    const g  = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f1, ac.currentTime);
+    o.frequency.linearRampToValueAtTime(f2, ac.currentTime + dur);
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + dur);
+  } catch (e) { /* ignore */ }
+}
+
+function snd(name) {
+  switch (name) {
+    case 'jump':
+      // Bright boing — quick up-sweep
+      sweep(220, 520, 0.12, 'sine', 0.2);
+      sweep(180, 400, 0.15, 'triangle', 0.08);
+      break;
+    case 'land':
+      // Soft thud
+      sweep(120, 60, 0.08, 'sine', 0.15);
+      tone(80, 0.06, 'triangle', 0.1);
+      break;
+    case 'die':
+      // Descending wah-wah
+      sweep(440, 110, 0.4, 'sawtooth', 0.15);
+      setTimeout(() => sweep(220, 55, 0.3, 'sawtooth', 0.1), 200);
+      break;
+    case 'milestone':
+      // Ascending fanfare
+      [0, 80, 160, 240].forEach((delay, i) => {
+        const notes = [523, 659, 784, 1047];
+        setTimeout(() => tone(notes[i], 0.18, 'sine', 0.2), delay);
+      });
+      break;
+  }
+}
+
+/* ============================================================
+   MOTIVATION TOASTS
+   ============================================================ */
+const TOASTS = [
+  { score: 30,  msg: '🔥 Not bad for a beginner!' },
+  { score: 60,  msg: '💪 You great motherf***er!' },
+  { score: 100, msg: '🚀 UNSTOPPABLE!!' },
+  { score: 150, msg: '😤 The groceries FEAR you!' },
+  { score: 200, msg: '👑 LEGEND MODE ACTIVATED' },
+  { score: 300, msg: '🥳 ARE YOU EVEN HUMAN?!' },
+  { score: 500, msg: '🛒💨 FASTEST SHOPPER ALIVE!' },
+];
+let lastToastScore = 0;
+let toastTimer     = null;
+const toastEl      = () => document.getElementById('toast');
+
+function showToast(msg) {
+  const el = toastEl();
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.classList.add('hidden'), 220);
+  }, 2200);
+  snd('milestone');
+}
+
+function checkToasts() {
+  for (const t of TOASTS) {
+    if (score >= t.score && lastToastScore < t.score) {
+      lastToastScore = t.score;
+      showToast(t.msg);
+      break;
+    }
+  }
+}
+
+function resetToasts() {
+  lastToastScore = 0;
+  const el = toastEl();
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
 }
 
 /* ============================================================
@@ -298,23 +391,33 @@ const player = {
 };
 
 /* ============================================================
-   OBSTACLES
+   OBSTACLES  — supermarket items drawn with canvas
    ============================================================ */
 let obstacles = [];
 let obsTimer  = 0;
-let nextGap   = 1.5;   // seconds until first obstacle
+let nextGap   = 1.5;
+
+// Each type: { key, w, h } — sizes relative to player dimensions
+const OBS_TYPES = [
+  { key: 'cart'   },   // shopping cart  (wide + tall)
+  { key: 'milk'   },   // milk carton    (narrow + tall)
+  { key: 'bread'  },   // bread loaf     (wide + short)
+  { key: 'cone'   },   // traffic cone   (narrow + medium)
+  { key: 'can'    },   // soup can       (small + round-ish)
+];
 
 function spawnObs() {
-  // Two silhouette shapes: tall-narrow pillar or short-wide block
-  const tall = Math.random() < 0.5;
-  const w = tall
-    ? CFG.PL_W * (0.5  + Math.random() * 0.35)    // narrow
-    : CFG.PL_W * (1.2  + Math.random() * 0.9);    // wide
-  const h = tall
-    ? CFG.PL_H * (1.0  + Math.random() * 1.1)     // tall
-    : CFG.PL_H * (0.45 + Math.random() * 0.35);   // short
-
-  obstacles.push({ x: W + 20, y: H - CFG.GROUND_H - h, w, h });
+  const type = OBS_TYPES[Math.floor(Math.random() * OBS_TYPES.length)];
+  let w, h;
+  switch (type.key) {
+    case 'cart':  w = CFG.PL_W * 2.2; h = CFG.PL_H * 1.4; break;
+    case 'milk':  w = CFG.PL_W * 0.9; h = CFG.PL_H * 1.6; break;
+    case 'bread': w = CFG.PL_W * 2.0; h = CFG.PL_H * 0.7; break;
+    case 'cone':  w = CFG.PL_W * 0.8; h = CFG.PL_H * 1.2; break;
+    case 'can':   w = CFG.PL_W * 0.9; h = CFG.PL_H * 0.9; break;
+    default:      w = CFG.PL_W * 1.2; h = CFG.PL_H * 1.0;
+  }
+  obstacles.push({ x: W + 20, y: H - CFG.GROUND_H - h, w, h, type: type.key });
 }
 
 function resetObs() {
@@ -324,45 +427,192 @@ function resetObs() {
 }
 
 function updateObs(dt) {
-  // Scroll left
   for (const o of obstacles) o.x -= speed * dt;
-  // Cull off-screen
   obstacles = obstacles.filter(o => o.x + o.w > -20);
 
-  // Spawn next obstacle
   obsTimer += dt;
   if (obsTimer >= nextGap) {
     spawnObs();
     obsTimer = 0;
-
-    // Shrink gap as speed increases (obstacles come faster)
     const t = Math.min((speed - CFG.SPEED_START) / (CFG.SPEED_MAX - CFG.SPEED_START), 1);
     nextGap  = CFG.GAP_MIN
              + (CFG.GAP_MAX - CFG.GAP_MIN) * (1 - t * 0.45)
-             + (Math.random() * 0.4 - 0.2);   // ±0.2 s jitter
+             + (Math.random() * 0.4 - 0.2);
     nextGap  = Math.max(nextGap, CFG.GAP_MIN);
   }
+}
+
+/* --- individual item drawers --- */
+
+function drawCart(x, y, w, h) {
+  const s = w / (CFG.PL_W * 2.2);   // scale factor
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth   = 2.5 * s;
+  ctx.lineJoin    = 'round';
+
+  // Basket body
+  ctx.fillStyle = 'rgba(255,204,0,0.18)';
+  ctx.strokeStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.15, y);
+  ctx.lineTo(x + w * 0.95, y);
+  ctx.lineTo(x + w,        y + h * 0.65);
+  ctx.lineTo(x + w * 0.05, y + h * 0.65);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  // Handle
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w * 0.15, y);
+  ctx.stroke();
+
+  // Bottom bar
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.1, y + h * 0.65);
+  ctx.lineTo(x + w * 0.9, y + h * 0.65);
+  ctx.stroke();
+
+  // Legs
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.25, y + h * 0.65);
+  ctx.lineTo(x + w * 0.15, y + h * 0.88);
+  ctx.moveTo(x + w * 0.75, y + h * 0.65);
+  ctx.lineTo(x + w * 0.85, y + h * 0.88);
+  ctx.stroke();
+
+  // Wheels
+  ctx.fillStyle = '#ffcc00';
+  [[x + w * 0.15, y + h * 0.9], [x + w * 0.85, y + h * 0.9]].forEach(([cx, cy]) => {
+    ctx.beginPath(); ctx.arc(cx, cy, 5 * s, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Label
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = `bold ${Math.round(9 * s)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('🛒', x + w / 2, y + h * 0.45);
+}
+
+function drawMilk(x, y, w, h) {
+  // Carton body
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, '#f0f8ff');
+  g.addColorStop(1, '#b0d4f1');
+  ctx.fillStyle = g;
+  rrect(x, y + h * 0.15, w, h * 0.85, 4); ctx.fill();
+
+  // Roof triangle
+  ctx.fillStyle = '#d0e8f8';
+  ctx.beginPath();
+  ctx.moveTo(x, y + h * 0.15);
+  ctx.lineTo(x + w / 2, y);
+  ctx.lineTo(x + w, y + h * 0.15);
+  ctx.closePath(); ctx.fill();
+
+  // Label stripe
+  ctx.fillStyle = '#3399ff';
+  ctx.fillRect(x, y + h * 0.4, w, h * 0.25);
+
+  // Text
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(w * 0.55)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('🥛', x + w / 2, y + h * 0.58);
+}
+
+function drawBread(x, y, w, h) {
+  // Loaf shape
+  ctx.fillStyle = '#d4832a';
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + h * 0.6, w / 2, h * 0.45, 0, Math.PI, 0);
+  ctx.fillRect(x, y + h * 0.6, w, h * 0.4);
+  ctx.fill();
+
+  ctx.fillStyle = '#e8a050';
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + h * 0.6, w / 2 - 3, h * 0.42, 0, Math.PI, 0);
+  ctx.fill();
+
+  // Score lines
+  ctx.strokeStyle = '#c0701a';
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + w * i / 4, y + h * 0.3);
+    ctx.lineTo(x + w * i / 4, y + h * 0.62);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#d4832a';
+  ctx.font = `${Math.round(w * 0.35)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('🍞', x + w / 2, y + h * 0.52);
+}
+
+function drawCone(x, y, w, h) {
+  // Orange cone
+  ctx.fillStyle = '#ff6600';
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2, y);
+  ctx.lineTo(x + w,     y + h * 0.85);
+  ctx.lineTo(x,         y + h * 0.85);
+  ctx.closePath(); ctx.fill();
+
+  // White stripes
+  ctx.fillStyle = '#fff';
+  [[0.35, 0.12], [0.55, 0.1]].forEach(([pos, bh]) => {
+    const sy = y + h * pos;
+    const sw = w * (1 - pos) * 0.85;
+    ctx.fillRect(x + (w - sw) / 2, sy, sw, h * bh);
+  });
+
+  // Base
+  ctx.fillStyle = '#333';
+  ctx.fillRect(x - 3, y + h * 0.85, w + 6, h * 0.1);
+
+  ctx.font = `${Math.round(w * 0.6)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('🚧', x + w / 2, y + h * 0.75);
+}
+
+function drawCan(x, y, w, h) {
+  // Can body
+  const g = ctx.createLinearGradient(x, y, x + w, y);
+  g.addColorStop(0,   '#cc2222');
+  g.addColorStop(0.4, '#ff4444');
+  g.addColorStop(1,   '#cc2222');
+  ctx.fillStyle = g;
+  rrect(x, y, w, h, w / 2); ctx.fill();
+
+  // Top rim
+  ctx.fillStyle = '#aaa';
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + 3, w / 2 - 1, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(w * 0.3)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('SOUP', x + w / 2, y + h * 0.52);
+  ctx.font = `${Math.round(w * 0.45)}px sans-serif`;
+  ctx.fillText('🥫', x + w / 2, y + h * 0.78);
 }
 
 function drawObs() {
   for (const o of obstacles) {
     ctx.save();
-    ctx.shadowColor = CFG.COL_OBSTACLE;
-    ctx.shadowBlur  = 12;
+    ctx.shadowColor = 'rgba(255,180,0,0.5)';
+    ctx.shadowBlur  = 10;
 
-    const g = ctx.createLinearGradient(o.x, o.y, o.x + o.w, o.y + o.h);
-    g.addColorStop(0, '#ff9898');
-    g.addColorStop(1, CFG.COL_OBSTACLE);
-    ctx.fillStyle = g;
-    rrect(o.x, o.y, o.w, o.h, 4);
-    ctx.fill();
-
-    // Top-edge highlight
-    ctx.shadowBlur = 0;
-    ctx.fillStyle  = 'rgba(255,255,255,0.15)';
-    rrect(o.x + 1, o.y + 1, o.w - 2, Math.min(8, o.h * 0.2), 3);
-    ctx.fill();
-
+    switch (o.type) {
+      case 'cart':  drawCart(o.x, o.y, o.w, o.h);  break;
+      case 'milk':  drawMilk(o.x, o.y, o.w, o.h);  break;
+      case 'bread': drawBread(o.x, o.y, o.w, o.h); break;
+      case 'cone':  drawCone(o.x, o.y, o.w, o.h);  break;
+      case 'can':   drawCan(o.x, o.y, o.w, o.h);   break;
+    }
     ctx.restore();
   }
 }
@@ -419,11 +669,21 @@ let speed     = CFG.SPEED_START;
 let elapsed   = 0;    // seconds in the current run (drives speed)
 let lastTs    = 0;    // previous frame timestamp (ms)
 
+// Funny game-over messages keyed by what hit you
+const DEATH_MSGS = {
+  cart:  ['A shopping cart said NO.', 'Demolished by dairy aisle traffic.', 'Cart 1 — You 0.'],
+  milk:  ['You got milked. 🥛', 'The milk carton showed no mercy.', 'Lactose intolerant? More like cart intolerant.'],
+  bread: ['Bread-bocked.', 'Daily bread: your nemesis.', 'Gluten-free? Nope, gluten-defeated.'],
+  cone:  ['Construction: 1. You: 0.', 'Coned! 🚧', 'The cone of shame awaits.'],
+  can:   ['Soup got you good. 🥫', 'Campbell\'s wins again.', 'Can-not continue.'],
+};
+
 function startGame() {
   score   = 0;
   speed   = CFG.SPEED_START;
   elapsed = 0;
   resetObs();
+  resetToasts();
   player.reset();
   buildBg();
   setScreen('none');
@@ -434,8 +694,31 @@ function gameOver() {
   if (state !== 'playing') return;
   state = 'dead';
   snd('die');
-  document.getElementById('finalScore').textContent = Math.floor(score);
-  document.getElementById('finalBest').textContent  = bestScore;
+
+  // Find what killed the player
+  const b = player.box(5);
+  let killer = 'cart';
+  for (const o of obstacles) {
+    if (b.l < o.x + o.w && b.r > o.x && b.t < o.y + o.h && b.b > o.y) {
+      killer = o.type; break;
+    }
+  }
+
+  // Funny death message
+  const msgs = DEATH_MSGS[killer] || DEATH_MSGS.cart;
+  const msg  = msgs[Math.floor(Math.random() * msgs.length)];
+
+  // Pick funny title based on score
+  const titles = score < 30  ? ['💀 Wiped Out!', '😵 Instant Death', '🛒 Gotcha!']
+               : score < 80  ? ['😤 So Close!', '💥 Obliterated!', '🤦 Seriously?']
+               : score < 150 ? ['🔥 Not Bad!', '💪 Respectable!', '👏 Decent Run!']
+                             : ['👑 Legendary Run!', '🥳 Absolute Unit!', '🚀 Incredible!'];
+  const title = titles[Math.floor(Math.random() * titles.length)];
+
+  document.getElementById('overTitle').textContent    = title;
+  document.getElementById('overMsg').textContent      = msg;
+  document.getElementById('finalScore').textContent   = Math.floor(score);
+  document.getElementById('finalBest').textContent    = bestScore;
   setScreen('gameover');
 }
 
@@ -466,6 +749,7 @@ function loop(ts) {
       localStorage.setItem('dash_best', bestScore);
     }
 
+    checkToasts();
     if (collides()) { gameOver(); }
   }
 
@@ -476,10 +760,36 @@ function loop(ts) {
 /* ============================================================
    RENDER
    ============================================================ */
+function drawSpeedLines() {
+  // Horizontal speed streaks — intensity grows with speed
+  const t = Math.min((speed - CFG.SPEED_START) / (CFG.SPEED_MAX - CFG.SPEED_START), 1);
+  if (t < 0.15) return;
+  const count  = Math.round(t * 12);
+  const alpha  = t * 0.18;
+  const gndY   = H - CFG.GROUND_H;
+  ctx.save();
+  ctx.strokeStyle = `rgba(99,220,220,${alpha})`;
+  ctx.lineWidth   = 1;
+  for (let i = 0; i < count; i++) {
+    // Deterministic positions based on bgT so they scroll
+    const seed  = (i * 137.5 + bgT * 180) % W;
+    const y     = 10 + ((i * 53 + Math.floor(bgT * 3)) % Math.round(gndY - 20));
+    const len   = 20 + (i % 4) * 18;
+    ctx.globalAlpha = alpha * (0.5 + 0.5 * Math.sin(bgT * 5 + i));
+    ctx.beginPath();
+    ctx.moveTo(seed, y);
+    ctx.lineTo(seed - len, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function render() {
   ctx.clearRect(0, 0, W, H);
 
   drawBg();
+
+  if (state === 'playing') drawSpeedLines();
 
   // Obstacles (empty on idle, frozen on dead)
   drawObs();

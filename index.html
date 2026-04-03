@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Dash — Endless Runner</title>
+  <title>🛒 Supermarket Dash</title>
 
   <!-- PWA / Home Screen -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#07071a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Dash">
+  <meta name="apple-mobile-web-app-title" content="Supermarket Dash">
   <link rel="apple-touch-icon" href="icon.svg">
 
   <link rel="stylesheet" href="style.css">
@@ -22,16 +22,21 @@
 
     <!-- ── Start Screen ── -->
     <div id="startScreen" class="overlay">
-      <h1 class="title">DASH</h1>
-      <p class="subtitle">Endless Runner</p>
-      <p class="best-tag">Best &nbsp;<span id="startBest">0</span></p>
-      <button id="startBtn" class="btn">Play</button>
-      <p class="hint">Space · Click · Tap &nbsp;to jump</p>
+      <div class="title-wrap">
+        <span class="title-emoji">🛒</span>
+        <h1 class="title">SUPERMARKET<br>DASH</h1>
+        <span class="title-emoji">💨</span>
+      </div>
+      <p class="subtitle">avoid the groceries. become legend.</p>
+      <p class="best-tag">🏆 Best &nbsp;<span id="startBest">0</span></p>
+      <button id="startBtn" class="btn">Let's GO! 🚀</button>
+      <p class="hint">tap · click · space to jump</p>
     </div>
 
     <!-- ── Game Over Screen ── -->
     <div id="gameOverScreen" class="overlay hidden">
-      <h2 class="over-title">Game Over</h2>
+      <h2 id="overTitle" class="over-title">💀 Wiped Out!</h2>
+      <p id="overMsg" class="over-msg">A milk carton got you. Classic.</p>
       <div class="score-row">
         <div class="score-block">
           <span class="score-label">Score</span>
@@ -42,8 +47,11 @@
           <span id="finalBest" class="score-num">0</span>
         </div>
       </div>
-      <button id="restartBtn" class="btn">Play Again</button>
+      <button id="restartBtn" class="btn">Try Again 😤</button>
     </div>
+
+    <!-- ── Motivation Toast ── -->
+    <div id="toast" class="toast hidden"></div>
 
   </div>
   <script src="script.js"></script>
