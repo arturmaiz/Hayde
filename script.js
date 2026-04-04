@@ -256,6 +256,165 @@ class AudioSystem {
       osc.start(now + 0.05); osc.stop(now + 1.68);
     } catch(_) {}
   }
+
+  // Quick mini "Hayde!" on item collect — short, punchy, cheerful
+  haydeCollect() {
+    if (!this.ctx) return;
+    try {
+      const ac  = this.ctx;
+      const now = ac.currentTime;
+
+      // Short aspirated "H"
+      const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.04), ac.sampleRate);
+      const nd   = nbuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      const nsrc = ac.createBufferSource();
+      nsrc.buffer = nbuf;
+      const nfilt = ac.createBiquadFilter();
+      nfilt.type = 'bandpass'; nfilt.frequency.value = 2800; nfilt.Q.value = 0.8;
+      const ngain = ac.createGain();
+      ngain.gain.setValueAtTime(0.14, now);
+      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
+      nsrc.start(now); nsrc.stop(now + 0.05);
+
+      // Quick vocal sweep — higher pitch, shorter
+      const osc = ac.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, now + 0.03);
+      osc.frequency.linearRampToValueAtTime(400, now + 0.15);  // Hay
+      osc.frequency.setValueAtTime(300, now + 0.22);            // d
+      osc.frequency.linearRampToValueAtTime(520, now + 0.35);   // ee!
+      osc.frequency.linearRampToValueAtTime(420, now + 0.50);   // tail
+
+      // Light vibrato
+      const lfo     = ac.createOscillator();
+      const lfoGain = ac.createGain();
+      lfo.type = 'sine'; lfo.frequency.value = 6.5;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfoGain.gain.setValueAtTime(0, now);
+      lfoGain.gain.linearRampToValueAtTime(15, now + 0.20);
+
+      // Formants
+      const f1 = ac.createBiquadFilter();
+      f1.type = 'bandpass'; f1.Q.value = 3;
+      f1.frequency.setValueAtTime(780, now + 0.03);
+      f1.frequency.linearRampToValueAtTime(350, now + 0.30);
+
+      const f2 = ac.createBiquadFilter();
+      f2.type = 'bandpass'; f2.Q.value = 5;
+      f2.frequency.setValueAtTime(1300, now + 0.03);
+      f2.frequency.linearRampToValueAtTime(2400, now + 0.30);
+
+      // Gain envelope — punchy and short
+      const mg = ac.createGain();
+      mg.gain.setValueAtTime(0, now);
+      mg.gain.linearRampToValueAtTime(0.40, now + 0.05);
+      mg.gain.setValueAtTime(0.35, now + 0.25);
+      mg.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+      osc.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
+      lfo.start(now);        lfo.stop(now + 0.58);
+      osc.start(now + 0.03); osc.stop(now + 0.56);
+    } catch(_) {}
+  }
+
+  // ULTRA "HAAAYYYYDDDEEEEE!!" on NOS — wild, high-energy, hilarious
+  haydeNOS() {
+    if (!this.ctx) return;
+    try {
+      const ac  = this.ctx;
+      const now = ac.currentTime;
+
+      // Big breathy "H" burst
+      const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.09), ac.sampleRate);
+      const nd   = nbuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      const nsrc = ac.createBufferSource();
+      nsrc.buffer = nbuf;
+      const nfilt = ac.createBiquadFilter();
+      nfilt.type = 'bandpass'; nfilt.frequency.value = 2600; nfilt.Q.value = 0.6;
+      const ngain = ac.createGain();
+      ngain.gain.setValueAtTime(0.25, now);
+      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
+      nsrc.start(now); nsrc.stop(now + 0.10);
+
+      // DUAL oscillators for thick, screaming voice
+      const osc1 = ac.createOscillator();
+      const osc2 = ac.createOscillator();
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';  // adds buzzy overlay
+
+      // osc1: main voice — starts high, goes CRAZY high
+      osc1.frequency.setValueAtTime(300, now + 0.06);
+      osc1.frequency.linearRampToValueAtTime(380, now + 0.18);  // HAA
+      osc1.frequency.linearRampToValueAtTime(440, now + 0.45);  // AAYYY
+      osc1.frequency.setValueAtTime(280, now + 0.52);            // D — percussive drop
+      osc1.frequency.linearRampToValueAtTime(600, now + 0.68);   // EE — rocket up!
+      osc1.frequency.linearRampToValueAtTime(880, now + 1.10);   // EEEEEE! soaring screech
+      osc1.frequency.linearRampToValueAtTime(660, now + 1.50);   // tail wobble down
+
+      // osc2: harmony, slightly detuned for comedic thickness
+      osc2.frequency.setValueAtTime(308, now + 0.06);
+      osc2.frequency.linearRampToValueAtTime(388, now + 0.18);
+      osc2.frequency.linearRampToValueAtTime(448, now + 0.45);
+      osc2.frequency.setValueAtTime(286, now + 0.52);
+      osc2.frequency.linearRampToValueAtTime(610, now + 0.68);
+      osc2.frequency.linearRampToValueAtTime(892, now + 1.10);
+      osc2.frequency.linearRampToValueAtTime(672, now + 1.50);
+
+      // WILD vibrato — fast and wobbly (hilarious)
+      const lfo     = ac.createOscillator();
+      const lfoG1   = ac.createGain();
+      const lfoG2   = ac.createGain();
+      lfo.type = 'sine';
+      lfo.frequency.setValueAtTime(5, now);
+      lfo.frequency.linearRampToValueAtTime(9, now + 0.80);   // vibrato speeds up!
+      lfo.frequency.linearRampToValueAtTime(12, now + 1.20);  // goes nuts
+      lfo.connect(lfoG1); lfoG1.connect(osc1.frequency);
+      lfo.connect(lfoG2); lfoG2.connect(osc2.frequency);
+      lfoG1.gain.setValueAtTime(0, now);
+      lfoG1.gain.linearRampToValueAtTime(30, now + 0.35);
+      lfoG1.gain.linearRampToValueAtTime(55, now + 0.90);     // huge wobble
+      lfoG2.gain.setValueAtTime(0, now);
+      lfoG2.gain.linearRampToValueAtTime(25, now + 0.35);
+      lfoG2.gain.linearRampToValueAtTime(45, now + 0.90);
+
+      // Formant filters — exaggerated vowels
+      const f1 = ac.createBiquadFilter();
+      f1.type = 'bandpass'; f1.Q.value = 5;
+      f1.frequency.setValueAtTime(800, now + 0.06);
+      f1.frequency.linearRampToValueAtTime(280, now + 0.70);
+
+      const f2 = ac.createBiquadFilter();
+      f2.type = 'bandpass'; f2.Q.value = 8;
+      f2.frequency.setValueAtTime(1100, now + 0.06);
+      f2.frequency.linearRampToValueAtTime(2800, now + 0.70);
+
+      // Master gain — LOUD and proud
+      const mg = ac.createGain();
+      mg.gain.setValueAtTime(0, now);
+      mg.gain.linearRampToValueAtTime(0.70, now + 0.08);
+      mg.gain.setValueAtTime(0.65, now + 0.50);
+      mg.gain.linearRampToValueAtTime(0.60, now + 1.10);
+      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
+
+      // osc2 gain — slightly quieter for texture
+      const mg2 = ac.createGain();
+      mg2.gain.setValueAtTime(0, now);
+      mg2.gain.linearRampToValueAtTime(0.25, now + 0.08);
+      mg2.gain.setValueAtTime(0.22, now + 0.50);
+      mg2.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
+
+      osc1.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
+      osc2.connect(mg2); mg2.connect(ac.destination);
+
+      lfo.start(now);        lfo.stop(now + 1.70);
+      osc1.start(now + 0.06); osc1.stop(now + 1.68);
+      osc2.start(now + 0.06); osc2.stop(now + 1.68);
+    } catch(_) {}
+  }
 }
 
 
@@ -1354,7 +1513,7 @@ class Game {
     if (this.state !== 'PLAYING') return;
     if (this.nosCharge >= CFG.NOS_MIN && !this.nosActive) {
       this.nosActive = true;
-      this.audio.nos();
+      this.audio.haydeNOS();
     }
   }
 
@@ -1507,7 +1666,7 @@ class Game {
       this.player.collect(emoji);
       this.score    += CFG.SCORE_ITEM;
       this.nosCharge = clamp(this.nosCharge + CFG.NOS_CHARGE, 0, CFG.NOS_MAX);
-      this.audio.collectRandom();
+      this.audio.haydeCollect();
 
       // Combo tracking: 3+ items within 2 seconds
       const now = this.elapsed;
