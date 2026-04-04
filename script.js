@@ -1,945 +1,1398 @@
 'use strict';
-
 /* ============================================================
-   EASY TWEAKS
-   ============================================================
-   These constants control every tuneable aspect of the game.
+   HAYDE — Supermarket Runner
+   Temple Run-inspired · Supermarket Cart · Apple Design
    ============================================================ */
+
+// ── Polyfill: roundRect ──────────────────────────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    const radius = Array.isArray(r) ? (r[0] || 0) : (r || 0);
+    const rx = Math.min(radius, w / 2);
+    const ry = Math.min(radius, h / 2);
+    this.moveTo(x + rx, y);
+    this.lineTo(x + w - rx, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + ry);
+    this.lineTo(x + w, y + h - ry);
+    this.quadraticCurveTo(x + w, y + h, x + w - rx, y + h);
+    this.lineTo(x + rx, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - ry);
+    this.lineTo(x, y + ry);
+    this.quadraticCurveTo(x, y, x + rx, y);
+    this.closePath();
+    return this;
+  };
+}
+
+// ── Utilities ────────────────────────────────────────────────
+const lerp   = (a, b, t) => a + (b - a) * t;
+const clamp  = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const rnd    = (lo, hi) => Math.random() * (hi - lo) + lo;
+const rndInt = (lo, hi) => Math.floor(rnd(lo, hi + 1));
+const TAU    = Math.PI * 2;
+
+// ── Config ───────────────────────────────────────────────────
 const CFG = {
-  // ── Physics ──────────────────────────────────────────────
-  GRAVITY:     2400,    // px/s²   — higher = heavier feel
-  JUMP_FORCE:  -800,    // px/s    — more negative = higher jump
+  // Track perspective (ratios of canvas dimensions)
+  VP_Y:        0.21,   // vanishing-point Y
+  NEAR_Y:      0.925,  // near-edge Y
+  NEAR_HALF:   0.42,   // half-width at near edge  (× canvas W)
+  FAR_HALF:    0.032,  // half-width at vanishing   (× canvas W)
 
-  // ── Scroll speed ─────────────────────────────────────────
-  SPEED_START:  300,    // px/s   initial scroll speed
-  SPEED_INC:     12,    // px/s   added per second of play
-  SPEED_MAX:    750,    // px/s   cap
+  // Player
+  PLAYER_D:    0.86,   // depth in track (0=far, 1=near)
+  LANE_LERP:   9,      // lane interpolation speed (per second)
+  JUMP_DUR:    0.50,   // seconds
+  JUMP_PEAK:   0.115,  // fraction of canvas H
+  SLIDE_DUR:   0.44,   // seconds
 
-  // ── Obstacle timing ──────────────────────────────────────
-  GAP_MIN:      1.0,    // seconds minimum gap between obstacles
-  GAP_MAX:      2.6,    // seconds maximum gap
+  // Speed / difficulty
+  SPEED_INIT:  0.27,   // depth units / second
+  SPEED_MAX:   1.60,
+  SPEED_INC:   0.009,  // per second of play
 
-  // ── Player geometry ──────────────────────────────────────
-  PL_W:          32,    // px width
-  PL_H:          46,    // px height
-  PL_X:          90,    // fixed left offset
+  // Spawning
+  SPAWN_INIT:  0.42,   // spawns per second
+  SPAWN_MAX:   1.50,
+  SPAWN_INC:   0.013,
+  HAZ_INIT:    0.22,   // hazard fraction
+  HAZ_MAX:     0.52,
 
-  // ── World ────────────────────────────────────────────────
-  GROUND_H:      68,    // px  height of ground strip from bottom
+  // Scoring
+  SCORE_DIST:  9,      // points/second (× speed factor)
+  SCORE_ITEM:  15,
 
-  // ── Colors (any CSS color string) ────────────────────────
-  COL_PLAYER:   '#63dcdc',
-  COL_OBSTACLE: '#ff7070',
+  // Nitrous
+  NOS_MAX:     100,
+  NOS_CHARGE:  14,     // per collect
+  NOS_DRAIN:   30,     // per second active
+  NOS_MIN:     38,     // minimum charge to fire
+  NOS_SPEED:   1.85,   // speed multiplier while active
+  NOS_SCORE:   3,      // extra score multiplier active
+
+  // Sparks
+  SPARK_MIN:   2,
+  SPARK_MAX:   18,
+
+  // Collectibles
+  ITEMS: ['🍎','🍞','🥛','🧀','🍌','🥚','🥫','🧃','🍊','🫐','🍋','🥕','🫙','🥩'],
 };
 
-/* ============================================================
-   CANVAS
-   ============================================================ */
-const canvas = document.getElementById('gameCanvas');
-const ctx    = canvas.getContext('2d');
-let W = 0, H = 0;   // live canvas dimensions
 
-/** Fit canvas to viewport preserving a ~2.6 : 1 aspect ratio. */
-function resize() {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const RATIO = 900 / 350;   // reference aspect
-
-  let w = Math.min(vw, 900);
-  let h = Math.round(w / RATIO);
-
-  if (h > vh) { h = vh; w = Math.round(h * RATIO); }
-
-  W = canvas.width  = w;
-  H = canvas.height = h;
-}
-
-/* ============================================================
-   UTILITY
-   ============================================================ */
-
-/** Trace a rounded-rectangle path (no fill / stroke applied). */
-function rrect(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x,     y + h, r);
-  ctx.arcTo(x,     y + h, x,     y,     r);
-  ctx.arcTo(x,     y,     x + w, y,     r);
-  ctx.closePath();
-}
-
-/* ============================================================
-   AUDIO  — Web Audio API (no files needed)
-   ============================================================ */
-let AC = null;
-
-function getAC() {
-  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-  if (AC.state === 'suspended') AC.resume();
-  return AC;
-}
-
-/** Play a simple synthesised tone */
-function tone(freq, dur, type = 'sine', vol = 0.18) {
-  try {
-    const ac = getAC();
-    const o  = ac.createOscillator();
-    const g  = ac.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, ac.currentTime);
-    g.gain.setValueAtTime(vol, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
-    o.connect(g); g.connect(ac.destination);
-    o.start(); o.stop(ac.currentTime + dur);
-  } catch (e) { /* silently ignore if audio blocked */ }
-}
-
-/** Two-tone sweep */
-function sweep(f1, f2, dur, type = 'sine', vol = 0.18) {
-  try {
-    const ac = getAC();
-    const o  = ac.createOscillator();
-    const g  = ac.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(f1, ac.currentTime);
-    o.frequency.linearRampToValueAtTime(f2, ac.currentTime + dur);
-    g.gain.setValueAtTime(vol, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
-    o.connect(g); g.connect(ac.destination);
-    o.start(); o.stop(ac.currentTime + dur);
-  } catch (e) { /* ignore */ }
-}
-
-function snd(name) {
-  switch (name) {
-    case 'jump':
-      // Bright boing — quick up-sweep
-      sweep(220, 520, 0.12, 'sine', 0.2);
-      sweep(180, 400, 0.15, 'triangle', 0.08);
-      break;
-    case 'land':
-      // Soft thud
-      sweep(120, 60, 0.08, 'sine', 0.15);
-      tone(80, 0.06, 'triangle', 0.1);
-      break;
-    case 'die':
-      // Descending wah-wah
-      sweep(440, 110, 0.4, 'sawtooth', 0.15);
-      setTimeout(() => sweep(220, 55, 0.3, 'sawtooth', 0.1), 200);
-      break;
-    case 'milestone':
-      // Ascending fanfare
-      [0, 80, 160, 240].forEach((delay, i) => {
-        const notes = [523, 659, 784, 1047];
-        setTimeout(() => tone(notes[i], 0.18, 'sine', 0.2), delay);
-      });
-      break;
+// ── Audio ────────────────────────────────────────────────────
+class AudioSystem {
+  constructor() {
+    this.ctx = null;
   }
-}
 
-/* ============================================================
-   MOTIVATION TOASTS
-   ============================================================ */
-const TOASTS = [
-  { score: 30,  msg: '🔥 Not bad for a beginner!' },
-  { score: 60,  msg: '💪 You great motherf***er!' },
-  { score: 100, msg: '🚀 UNSTOPPABLE!!' },
-  { score: 150, msg: '😤 The groceries FEAR you!' },
-  { score: 200, msg: '👑 LEGEND MODE ACTIVATED' },
-  { score: 300, msg: '🥳 ARE YOU EVEN HUMAN?!' },
-  { score: 500, msg: '🛒💨 FASTEST SHOPPER ALIVE!' },
-];
-let lastToastScore = 0;
-let toastTimer     = null;
-const toastEl      = () => document.getElementById('toast');
-
-function showToast(msg) {
-  const el = toastEl();
-  el.textContent = msg;
-  el.classList.remove('hidden');
-  el.classList.add('show');
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.classList.remove('show');
-    setTimeout(() => el.classList.add('hidden'), 220);
-  }, 2200);
-  snd('milestone');
-  triggerFlash('#ffe94d', 0.22);
-}
-
-function checkToasts() {
-  for (const t of TOASTS) {
-    if (score >= t.score && lastToastScore < t.score) {
-      lastToastScore = t.score;
-      showToast(t.msg);
-      break;
-    }
+  boot() {
+    if (this.ctx) return;
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (_) {}
   }
-}
 
-function resetToasts() {
-  lastToastScore = 0;
-  const el = toastEl();
-  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
-}
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
 
-/* ============================================================
-   BACKGROUND  (stars + parallax ground marks)
-   ============================================================ */
-let stars  = [];
-let gmarks = [];
-let bgT    = 0;    // always-running clock for idle animations
-
-function buildBg() {
-  stars  = [];
-  gmarks = [];
-
-  const n = Math.max(25, Math.round(W * H / 7500));
-  for (let i = 0; i < n; i++) {
-    stars.push({
-      x:   Math.random() * W,
-      y:   Math.random() * (H - CFG.GROUND_H - 8),
-      r:   Math.random() * 1.4 + 0.25,
-      a:   Math.random() * 0.55 + 0.12,
-      par: 0.04 + Math.random() * 0.1,    // parallax factor (0 = fixed)
+  _tone(freqs, type = 'sine', dur = 0.15, vol = 0.22, detuneSeq = []) {
+    if (!this.ctx) return;
+    freqs.forEach((f, i) => {
+      try {
+        const osc  = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = type;
+        osc.frequency.setValueAtTime(f, this.ctx.currentTime + i * 0.06);
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime + i * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.06 + dur);
+        osc.start(this.ctx.currentTime + i * 0.06);
+        osc.stop(this.ctx.currentTime  + i * 0.06 + dur + 0.01);
+      } catch (_) {}
     });
   }
 
-  for (let i = 0; i < 18; i++) {
-    gmarks.push({
-      x: Math.random() * W * 1.5,
-      y: H - CFG.GROUND_H + 7 + Math.random() * (CFG.GROUND_H - 14),
-      w: 20 + Math.random() * 36,
-      a: 0.04 + Math.random() * 0.08,
-    });
-  }
+  jump()    { this._tone([340, 520], 'sine',     0.14, 0.18); }
+  land()    { this._tone([130],      'triangle', 0.10, 0.22); }
+  collect() { this._tone([660, 880], 'sine',     0.11, 0.18); }
+  die()     { this._tone([220, 140, 90], 'sawtooth', 0.30, 0.38); }
+  nos()     { this._tone([440, 660, 880, 1100], 'square', 0.08, 0.12); }
+  levelUp() { this._tone([400, 520, 660, 880], 'sine', 0.18, 0.20); }
 }
 
-/** Scroll background layers by the given speed (px/s). */
-function updateBg(dt, spd) {
-  bgT += dt;
-  for (const s of stars)  { s.x -= spd * s.par * dt; if (s.x < 0) s.x += W; }
-  for (const m of gmarks) { m.x -= spd * dt;          if (m.x + m.w < 0) m.x += W + m.w; }
-}
 
-function drawBg() {
-  // Sky gradient
-  const sky = ctx.createLinearGradient(0, 0, 0, H - CFG.GROUND_H);
-  sky.addColorStop(0, '#07071a');
-  sky.addColorStop(1, '#130d2e');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H - CFG.GROUND_H);
-
-  // Stars
-  for (const s of stars) {
-    ctx.globalAlpha = s.a;
-    ctx.fillStyle   = '#fff';
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.fill();
+// ── Particles ────────────────────────────────────────────────
+class Particle {
+  constructor(x, y, vx, vy, life, size, color, kind) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.life = this.maxLife = life;
+    this.size = size;
+    this.color = color; // string color or emoji
+    this.kind  = kind;  // 'spark' | 'nos' | 'collect' | 'flash'
+    this.dead  = false;
   }
-  ctx.globalAlpha = 1;
-
-  // Horizon glow
-  const hg = ctx.createLinearGradient(0, H - CFG.GROUND_H - 40, 0, H - CFG.GROUND_H);
-  hg.addColorStop(0, 'rgba(99,220,220,0)');
-  hg.addColorStop(1, 'rgba(99,220,220,0.07)');
-  ctx.fillStyle = hg;
-  ctx.fillRect(0, H - CFG.GROUND_H - 40, W, 40);
-
-  // Ground strip
-  ctx.fillStyle = '#0c1030';
-  ctx.fillRect(0, H - CFG.GROUND_H, W, CFG.GROUND_H);
-
-  // Neon edge line
-  const el = ctx.createLinearGradient(0, H - CFG.GROUND_H, 0, H - CFG.GROUND_H + 3);
-  el.addColorStop(0, 'rgba(99,220,220,0.85)');
-  el.addColorStop(1, 'rgba(99,220,220,0)');
-  ctx.fillStyle = el;
-  ctx.fillRect(0, H - CFG.GROUND_H, W, 3);
-
-  // Scrolling ground dashes (speed sensation)
-  for (const m of gmarks) {
-    ctx.globalAlpha = m.a;
-    ctx.fillStyle   = '#63dcdc';
-    ctx.fillRect(m.x, m.y, m.w, 1);
-  }
-  ctx.globalAlpha = 1;
-}
-
-/* ============================================================
-   PLAYER
-   ============================================================ */
-const player = {
-  x:  CFG.PL_X,
-  y:  0,
-  vy: 0,
-  w:  CFG.PL_W,
-  h:  CFG.PL_H,
-  onGround: false,
-  sx: 1,   // squash-stretch scale X
-  sy: 1,   // squash-stretch scale Y
-
-  /** Y coordinate of the ground (bottom of player when standing). */
-  groundY() { return H - CFG.GROUND_H - this.h; },
-
-  /** Full reset — call on game start and after resize. */
-  reset() {
-    this.y = this.groundY();
-    this.vy = 0;
-    this.onGround = true;
-    this.sx = this.sy = 1;
-  },
-
-  /** Initiate a jump. Ignored if already airborne. */
-  jump() {
-    if (!this.onGround) return;
-    this.vy       = CFG.JUMP_FORCE;
-    this.onGround = false;
-    // Launch squash: compress horizontal, stretch vertical
-    this.sx = 0.78;
-    this.sy = 1.28;
-    snd('jump');
-  },
 
   update(dt) {
-    this.vy += CFG.GRAVITY * dt;
-    this.y  += this.vy * dt;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    if (this.kind === 'spark') this.vy += 900 * dt;
+    if (this.kind === 'nos')   this.vy += 200 * dt;
+    this.life -= dt;
+    if (this.life <= 0) this.dead = true;
+  }
 
-    const floor = this.groundY();
-    if (this.y >= floor) {
-      if (!this.onGround) {
-        // Landing squash: spread horizontal, compress vertical
-        this.sx = 1.35;
-        this.sy = 0.65;
-        snd('land');
-      }
-      this.y = floor; this.vy = 0; this.onGround = true;
-    }
-
-    // Spring scale back towards 1 (squash-stretch recovery)
-    const ease = Math.min(dt * 14, 0.9);
-    this.sx += (1 - this.sx) * ease;
-    this.sy += (1 - this.sy) * ease;
-  },
-
-  /**
-   * Returns axis-aligned bounding box, optionally inset by `i` px on
-   * every side (used for forgiving collision detection).
-   */
-  box(i = 0) {
-    const cx = this.x + this.w / 2;
-    const cy = this.y + this.h / 2;
-    return {
-      l: cx - (this.w * this.sx) / 2 + i,
-      r: cx + (this.w * this.sx) / 2 - i,
-      t: cy - (this.h * this.sy) / 2 + i,
-      b: cy + (this.h * this.sy) / 2 - i,
-    };
-  },
-
-  /**
-   * Render the player.
-   * @param {number} [idleOff=0]  Vertical offset for idle breathing animation.
-   */
-  draw(idleOff = 0) {
-    const cx  = this.x + this.w / 2;
-    const cy  = this.y + this.h / 2 + idleOff;
-    const dw  = this.w * this.sx;
-    const dh  = this.h * this.sy;
-    const gY  = H - CFG.GROUND_H;
-
-    // ── Ellipse shadow on ground ──────────────────────────
-    const dist    = Math.max(0, gY - (cy + dh / 2));
-    const sFactor = Math.max(0, 1 - dist / (H * 0.6));
-    ctx.globalAlpha = 0.28 * sFactor;
-    ctx.fillStyle   = 'rgba(0,0,50,1)';
-    ctx.beginPath();
-    ctx.ellipse(cx, gY, dw * 0.52, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // ── Body ─────────────────────────────────────────────
+  draw(ctx) {
+    if (this.dead) return;
+    const t = clamp(this.life / this.maxLife, 0, 1);
     ctx.save();
-    if (!this.onGround) {
-      ctx.shadowColor = CFG.COL_PLAYER;
-      ctx.shadowBlur  = 22;   // glow when airborne
-    }
+    ctx.globalAlpha = t;
 
-    const grad = ctx.createLinearGradient(cx - dw / 2, cy - dh / 2, cx + dw / 2, cy + dh / 2);
-    grad.addColorStop(0, '#b0f0f0');
-    grad.addColorStop(1, CFG.COL_PLAYER);
-    ctx.fillStyle = grad;
-    rrect(cx - dw / 2, cy - dh / 2, dw, dh, 6);
-    ctx.fill();
-
-    // Inner highlight (top-left shine)
-    ctx.shadowBlur = 0;
-    ctx.fillStyle  = 'rgba(255,255,255,0.22)';
-    rrect(cx - dw / 2 + 2, cy - dh / 2 + 2, dw * 0.42, dh * 0.34, 4);
-    ctx.fill();
-
-    // Small "eye" detail
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.beginPath();
-    ctx.arc(cx + dw * 0.18, cy - dh * 0.18, dw * 0.09, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  },
-};
-
-/* ============================================================
-   OBSTACLES  — supermarket items drawn with canvas
-   ============================================================ */
-let obstacles = [];
-let obsTimer  = 0;
-let nextGap   = 1.5;
-
-// Each type: { key, w, h } — sizes relative to player dimensions
-const OBS_TYPES = [
-  { key: 'cart'   },   // shopping cart  (wide + tall)
-  { key: 'milk'   },   // milk carton    (narrow + tall)
-  { key: 'bread'  },   // bread loaf     (wide + short)
-  { key: 'cone'   },   // traffic cone   (narrow + medium)
-  { key: 'can'    },   // soup can       (small + round-ish)
-];
-
-function spawnObs() {
-  const type = OBS_TYPES[Math.floor(Math.random() * OBS_TYPES.length)];
-  let w, h;
-  switch (type.key) {
-    case 'cart':  w = CFG.PL_W * 2.2; h = CFG.PL_H * 1.4; break;
-    case 'milk':  w = CFG.PL_W * 0.9; h = CFG.PL_H * 1.6; break;
-    case 'bread': w = CFG.PL_W * 2.0; h = CFG.PL_H * 0.7; break;
-    case 'cone':  w = CFG.PL_W * 0.8; h = CFG.PL_H * 1.2; break;
-    case 'can':   w = CFG.PL_W * 0.9; h = CFG.PL_H * 0.9; break;
-    default:      w = CFG.PL_W * 1.2; h = CFG.PL_H * 1.0;
-  }
-  obstacles.push({ x: W + 20, y: H - CFG.GROUND_H - h, w, h, type: type.key });
-}
-
-function resetObs() {
-  obstacles = [];
-  obsTimer  = 0;
-  nextGap   = 1.5;
-}
-
-function updateObs(dt) {
-  for (const o of obstacles) o.x -= speed * dt;
-  obstacles = obstacles.filter(o => o.x + o.w > -20);
-
-  obsTimer += dt;
-  if (obsTimer >= nextGap) {
-    spawnObs();
-    obsTimer = 0;
-    const t = Math.min((speed - CFG.SPEED_START) / (CFG.SPEED_MAX - CFG.SPEED_START), 1);
-    nextGap  = CFG.GAP_MIN
-             + (CFG.GAP_MAX - CFG.GAP_MIN) * (1 - t * 0.45)
-             + (Math.random() * 0.4 - 0.2);
-    nextGap  = Math.max(nextGap, CFG.GAP_MIN);
-  }
-}
-
-/* --- individual item drawers --- */
-
-function drawCart(x, y, w, h) {
-  const s = w / (CFG.PL_W * 2.2);   // scale factor
-  ctx.strokeStyle = '#ffcc00';
-  ctx.lineWidth   = 2.5 * s;
-  ctx.lineJoin    = 'round';
-
-  // Basket body
-  ctx.fillStyle = 'rgba(255,204,0,0.18)';
-  ctx.strokeStyle = '#ffcc00';
-  ctx.beginPath();
-  ctx.moveTo(x + w * 0.15, y);
-  ctx.lineTo(x + w * 0.95, y);
-  ctx.lineTo(x + w,        y + h * 0.65);
-  ctx.lineTo(x + w * 0.05, y + h * 0.65);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Handle
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + w * 0.15, y);
-  ctx.stroke();
-
-  // Bottom bar
-  ctx.beginPath();
-  ctx.moveTo(x + w * 0.1, y + h * 0.65);
-  ctx.lineTo(x + w * 0.9, y + h * 0.65);
-  ctx.stroke();
-
-  // Legs
-  ctx.beginPath();
-  ctx.moveTo(x + w * 0.25, y + h * 0.65);
-  ctx.lineTo(x + w * 0.15, y + h * 0.88);
-  ctx.moveTo(x + w * 0.75, y + h * 0.65);
-  ctx.lineTo(x + w * 0.85, y + h * 0.88);
-  ctx.stroke();
-
-  // Wheels
-  ctx.fillStyle = '#ffcc00';
-  [[x + w * 0.15, y + h * 0.9], [x + w * 0.85, y + h * 0.9]].forEach(([cx, cy]) => {
-    ctx.beginPath(); ctx.arc(cx, cy, 5 * s, 0, Math.PI * 2); ctx.fill();
-  });
-
-  // Label
-  ctx.fillStyle = '#ffcc00';
-  ctx.font = `bold ${Math.round(9 * s)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('🛒', x + w / 2, y + h * 0.45);
-}
-
-function drawMilk(x, y, w, h) {
-  // Carton body
-  const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, '#f0f8ff');
-  g.addColorStop(1, '#b0d4f1');
-  ctx.fillStyle = g;
-  rrect(x, y + h * 0.15, w, h * 0.85, 4); ctx.fill();
-
-  // Roof triangle
-  ctx.fillStyle = '#d0e8f8';
-  ctx.beginPath();
-  ctx.moveTo(x, y + h * 0.15);
-  ctx.lineTo(x + w / 2, y);
-  ctx.lineTo(x + w, y + h * 0.15);
-  ctx.closePath(); ctx.fill();
-
-  // Label stripe
-  ctx.fillStyle = '#3399ff';
-  ctx.fillRect(x, y + h * 0.4, w, h * 0.25);
-
-  // Text
-  ctx.fillStyle = '#fff';
-  ctx.font = `bold ${Math.round(w * 0.55)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('🥛', x + w / 2, y + h * 0.58);
-}
-
-function drawBread(x, y, w, h) {
-  // Loaf shape
-  ctx.fillStyle = '#d4832a';
-  ctx.beginPath();
-  ctx.ellipse(x + w / 2, y + h * 0.6, w / 2, h * 0.45, 0, Math.PI, 0);
-  ctx.fillRect(x, y + h * 0.6, w, h * 0.4);
-  ctx.fill();
-
-  ctx.fillStyle = '#e8a050';
-  ctx.beginPath();
-  ctx.ellipse(x + w / 2, y + h * 0.6, w / 2 - 3, h * 0.42, 0, Math.PI, 0);
-  ctx.fill();
-
-  // Score lines
-  ctx.strokeStyle = '#c0701a';
-  ctx.lineWidth = 1.5;
-  for (let i = 1; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(x + w * i / 4, y + h * 0.3);
-    ctx.lineTo(x + w * i / 4, y + h * 0.62);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = '#d4832a';
-  ctx.font = `${Math.round(w * 0.35)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('🍞', x + w / 2, y + h * 0.52);
-}
-
-function drawCone(x, y, w, h) {
-  // Orange cone
-  ctx.fillStyle = '#ff6600';
-  ctx.beginPath();
-  ctx.moveTo(x + w / 2, y);
-  ctx.lineTo(x + w,     y + h * 0.85);
-  ctx.lineTo(x,         y + h * 0.85);
-  ctx.closePath(); ctx.fill();
-
-  // White stripes
-  ctx.fillStyle = '#fff';
-  [[0.35, 0.12], [0.55, 0.1]].forEach(([pos, bh]) => {
-    const sy = y + h * pos;
-    const sw = w * (1 - pos) * 0.85;
-    ctx.fillRect(x + (w - sw) / 2, sy, sw, h * bh);
-  });
-
-  // Base
-  ctx.fillStyle = '#333';
-  ctx.fillRect(x - 3, y + h * 0.85, w + 6, h * 0.1);
-
-  ctx.font = `${Math.round(w * 0.6)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('🚧', x + w / 2, y + h * 0.75);
-}
-
-function drawCan(x, y, w, h) {
-  // Can body
-  const g = ctx.createLinearGradient(x, y, x + w, y);
-  g.addColorStop(0,   '#cc2222');
-  g.addColorStop(0.4, '#ff4444');
-  g.addColorStop(1,   '#cc2222');
-  ctx.fillStyle = g;
-  rrect(x, y, w, h, w / 2); ctx.fill();
-
-  // Top rim
-  ctx.fillStyle = '#aaa';
-  ctx.beginPath();
-  ctx.ellipse(x + w / 2, y + 3, w / 2 - 1, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Label
-  ctx.fillStyle = '#fff';
-  ctx.font = `bold ${Math.round(w * 0.3)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('SOUP', x + w / 2, y + h * 0.52);
-  ctx.font = `${Math.round(w * 0.45)}px sans-serif`;
-  ctx.fillText('🥫', x + w / 2, y + h * 0.78);
-}
-
-function drawObs() {
-  for (const o of obstacles) {
-    ctx.save();
-    ctx.shadowColor = 'rgba(255,180,0,0.5)';
-    ctx.shadowBlur  = 10;
-
-    switch (o.type) {
-      case 'cart':  drawCart(o.x, o.y, o.w, o.h);  break;
-      case 'milk':  drawMilk(o.x, o.y, o.w, o.h);  break;
-      case 'bread': drawBread(o.x, o.y, o.w, o.h); break;
-      case 'cone':  drawCone(o.x, o.y, o.w, o.h);  break;
-      case 'can':   drawCan(o.x, o.y, o.w, o.h);   break;
+    if (this.kind === 'collect') {
+      const s = this.size * (0.6 + t * 0.8);
+      ctx.font = `${s}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.color, this.x, this.y);
+    } else {
+      ctx.fillStyle = this.color;
+      ctx.shadowBlur  = this.size * 2.5;
+      ctx.shadowColor = this.color;
+      const s = this.size * (0.4 + t * 0.6);
+      ctx.fillRect(this.x - s * 0.5, this.y - s * 0.5, s, s);
     }
     ctx.restore();
   }
 }
 
-/* ============================================================
-   COLLISION DETECTION
-   ============================================================ */
-/** Returns true if the player's (slightly inset) box overlaps any obstacle. */
-function collides() {
-  const b = player.box(5);   // 5 px inset gives a forgiving hitbox
-  for (const o of obstacles) {
-    if (b.l < o.x + o.w && b.r > o.x && b.t < o.y + o.h && b.b > o.y)
-      return true;
-  }
-  return false;
-}
+class Particles {
+  constructor() { this.list = []; }
 
-/* ============================================================
-   HUD  (drawn directly on the canvas)
-   ============================================================ */
-function drawHUD() {
-  ctx.save();
-  ctx.textBaseline = 'top';
-
-  // Current score (top-left, large)
-  ctx.shadowColor = 'rgba(99,220,220,0.6)';
-  ctx.shadowBlur  = 14;
-  ctx.font        = `bold ${Math.round(H * 0.13)}px 'Segoe UI', system-ui, sans-serif`;
-  ctx.fillStyle   = 'rgba(255,255,255,0.92)';
-  ctx.textAlign   = 'left';
-  ctx.fillText(
-    String(Math.floor(score)).padStart(4, '0'),
-    Math.round(W * 0.04),
-    Math.round(H * 0.07)
-  );
-
-  // Best score (top-right, small)
-  ctx.shadowBlur = 0;
-  ctx.font       = `${Math.round(H * 0.068)}px 'Segoe UI', system-ui, sans-serif`;
-  ctx.fillStyle  = 'rgba(255,255,255,0.28)';
-  ctx.textAlign  = 'right';
-  ctx.fillText(`BEST  ${bestScore}`, W - Math.round(W * 0.04), Math.round(H * 0.09));
-
-  ctx.restore();
-}
-
-/* ============================================================
-   SCREEN FLASH
-   ============================================================ */
-let flashAlpha = 0;
-let flashColor = '#fff';
-
-function triggerFlash(color, alpha = 0.55) {
-  flashColor = color;
-  flashAlpha = alpha;
-}
-
-function drawFlash() {
-  if (flashAlpha <= 0) return;
-  ctx.globalAlpha = flashAlpha;
-  ctx.fillStyle   = flashColor;
-  ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = 1;
-  flashAlpha     = Math.max(0, flashAlpha - 0.04);   // fade each frame
-}
-
-/* ============================================================
-   COMBO COUNTER
-   ============================================================ */
-let combo        = 0;
-let comboDisplay = 0;   // shown value (delayed so it's visible)
-let comboTimer   = 0;   // seconds remaining to show combo
-
-function resetCombo() {
-  combo        = 0;
-  comboDisplay = 0;
-  comboTimer   = 0;
-}
-
-function updateCombo(dt) {
-  if (comboTimer > 0) comboTimer -= dt;
-
-  // Check each obstacle: if it just cleared the player, count a dodge
-  for (const o of obstacles) {
-    if (!o.dodged && o.x + o.w < CFG.PL_X) {
-      o.dodged = true;
-      combo++;
-      comboDisplay = combo;
-      comboTimer   = 1.4;
-    }
-  }
-}
-
-function drawCombo() {
-  if (comboDisplay < 2 || comboTimer <= 0) return;
-  const fade = Math.min(comboTimer / 0.4, 1);
-  ctx.save();
-  ctx.globalAlpha  = fade;
-  ctx.textBaseline = 'top';
-  ctx.textAlign    = 'center';
-
-  const size = Math.round(H * 0.09);
-  ctx.font      = `900 ${size}px 'Segoe UI', system-ui, sans-serif`;
-  ctx.fillStyle = comboDisplay >= 6 ? '#ff4dff'
-                : comboDisplay >= 4 ? '#ffcc00'
-                :                     '#63dcdc';
-  ctx.shadowColor = ctx.fillStyle;
-  ctx.shadowBlur  = 18;
-  ctx.fillText(`x${comboDisplay} COMBO`, W / 2, Math.round(H * 0.18));
-  ctx.restore();
-}
-
-/* ============================================================
-   GAME STATE
-   ============================================================ */
-let state     = 'idle';    // 'idle' | 'playing' | 'dead'
-let score     = 0;
-let bestScore = +localStorage.getItem('dash_best') || 0;
-let speed     = CFG.SPEED_START;
-let elapsed   = 0;    // seconds in the current run (drives speed)
-let lastTs    = 0;    // previous frame timestamp (ms)
-
-// Funny game-over messages keyed by what hit you
-const DEATH_MSGS = {
-  cart:  ['A shopping cart said NO.', 'Demolished by dairy aisle traffic.', 'Cart 1 — You 0.'],
-  milk:  ['You got milked. 🥛', 'The milk carton showed no mercy.', 'Lactose intolerant? More like cart intolerant.'],
-  bread: ['Bread-bocked.', 'Daily bread: your nemesis.', 'Gluten-free? Nope, gluten-defeated.'],
-  cone:  ['Construction: 1. You: 0.', 'Coned! 🚧', 'The cone of shame awaits.'],
-  can:   ['Soup got you good. 🥫', 'Campbell\'s wins again.', 'Can-not continue.'],
-};
-
-function startGame() {
-  score      = 0;
-  speed      = CFG.SPEED_START;
-  elapsed    = 0;
-  flashAlpha = 0;
-  resetObs();
-  resetToasts();
-  resetCombo();
-  player.reset();
-  buildBg();
-  setScreen('none');
-  state = 'playing';
-}
-
-function gameOver() {
-  if (state !== 'playing') return;
-  state = 'dead';
-  snd('die');
-  triggerFlash('#ff2244', 0.5);
-
-  // Find what killed the player
-  const b = player.box(5);
-  let killer = 'cart';
-  for (const o of obstacles) {
-    if (b.l < o.x + o.w && b.r > o.x && b.t < o.y + o.h && b.b > o.y) {
-      killer = o.type; break;
+  sparks(x, y, count, speedMult = 1, colors = ['#ff9f0a','#ffd60a','#ff6b35']) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.PI + rnd(-0.45, 0.45);
+      const speed = rnd(90, 260) * speedMult;
+      this.list.push(new Particle(
+        x + rnd(-10, 10), y + rnd(-4, 4),
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed - rnd(40, 140),
+        rnd(0.20, 0.60), rnd(2, 5),
+        colors[rndInt(0, colors.length - 1)], 'spark'
+      ));
     }
   }
 
-  // Funny death message
-  const msgs = DEATH_MSGS[killer] || DEATH_MSGS.cart;
-  const msg  = msgs[Math.floor(Math.random() * msgs.length)];
-
-  // Pick funny title based on score
-  const titles = score < 30  ? ['💀 Wiped Out!', '😵 Instant Death', '🛒 Gotcha!']
-               : score < 80  ? ['😤 So Close!', '💥 Obliterated!', '🤦 Seriously?']
-               : score < 150 ? ['🔥 Not Bad!', '💪 Respectable!', '👏 Decent Run!']
-                             : ['👑 Legendary Run!', '🥳 Absolute Unit!', '🚀 Incredible!'];
-  const title = titles[Math.floor(Math.random() * titles.length)];
-
-  document.getElementById('overTitle').textContent    = title;
-  document.getElementById('overMsg').textContent      = msg;
-  document.getElementById('finalScore').textContent   = Math.floor(score);
-  document.getElementById('finalBest').textContent    = bestScore;
-  setScreen('gameover');
-}
-
-/* ============================================================
-   MAIN LOOP  (requestAnimationFrame)
-   ============================================================ */
-function loop(ts) {
-  // Delta time in seconds; capped at 50 ms to avoid spiral-of-death on tab focus
-  const dt = Math.min((ts - lastTs) / 1000, 0.05);
-  lastTs   = ts;
-
-  // Background always scrolls (slower when not playing)
-  const bgSpd = state === 'playing' ? speed : CFG.SPEED_START * 0.22;
-  updateBg(dt, bgSpd);
-
-  if (state === 'playing') {
-    elapsed += dt;
-    speed    = Math.min(CFG.SPEED_START + CFG.SPEED_INC * elapsed, CFG.SPEED_MAX);
-
-    player.update(dt);
-    updateObs(dt);
-
-    // Score: base 10 pts/s, scaling with speed
-    score += dt * (10 + (speed - CFG.SPEED_START) / 30);
-
-    if (score > bestScore) {
-      bestScore = Math.floor(score);
-      localStorage.setItem('dash_best', bestScore);
+  nosTrail(x, y) {
+    const cols = ['#00d4ff','#0071e3','#bf5af2','#fff'];
+    for (let i = 0; i < 5; i++) {
+      this.list.push(new Particle(
+        x + rnd(-14, 14), y + rnd(-5, 5),
+        rnd(-70, 70), rnd(-90, 50),
+        rnd(0.14, 0.38), rnd(3, 9),
+        cols[rndInt(0, cols.length - 1)], 'nos'
+      ));
     }
-
-    updateCombo(dt);
-    checkToasts();
-    if (collides()) { gameOver(); }
   }
 
-  render();
-  requestAnimationFrame(loop);
-}
-
-/* ============================================================
-   RENDER
-   ============================================================ */
-function drawSpeedLines() {
-  // Horizontal speed streaks — intensity grows with speed
-  const t = Math.min((speed - CFG.SPEED_START) / (CFG.SPEED_MAX - CFG.SPEED_START), 1);
-  if (t < 0.15) return;
-  const count  = Math.round(t * 12);
-  const alpha  = t * 0.18;
-  const gndY   = H - CFG.GROUND_H;
-  ctx.save();
-  ctx.strokeStyle = `rgba(99,220,220,${alpha})`;
-  ctx.lineWidth   = 1;
-  for (let i = 0; i < count; i++) {
-    // Deterministic positions based on bgT so they scroll
-    const seed  = (i * 137.5 + bgT * 180) % W;
-    const y     = 10 + ((i * 53 + Math.floor(bgT * 3)) % Math.round(gndY - 20));
-    const len   = 20 + (i % 4) * 18;
-    ctx.globalAlpha = alpha * (0.5 + 0.5 * Math.sin(bgT * 5 + i));
-    ctx.beginPath();
-    ctx.moveTo(seed, y);
-    ctx.lineTo(seed - len, y);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function render() {
-  ctx.clearRect(0, 0, W, H);
-
-  drawBg();
-
-  if (state === 'playing') drawSpeedLines();
-
-  // Obstacles (empty on idle, frozen on dead)
-  drawObs();
-
-  // Player — idle gets a gentle breathing bob
-  player.draw(state === 'idle' ? Math.sin(bgT * 1.8) * 3 : 0);
-
-  // HUD only while playing
-  if (state === 'playing') {
-    drawHUD();
-    drawCombo();
+  collectPop(x, y, emoji) {
+    this.list.push(new Particle(x, y, rnd(-20, 20), -130,
+      0.65, 26, emoji, 'collect'));
   }
 
-  // Flash overlay (death = red, milestone = yellow)
-  drawFlash();
+  update(dt) {
+    for (const p of this.list) p.update(dt);
+    this.list = this.list.filter(p => !p.dead);
+  }
 
-  // Subtle vignette darkens edges
-  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.12, W / 2, H / 2, W * 0.68);
-  v.addColorStop(0, 'transparent');
-  v.addColorStop(1, 'rgba(0,0,12,0.42)');
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, W, H);
+  draw(ctx) {
+    ctx.save();
+    for (const p of this.list) p.draw(ctx);
+    ctx.restore();
+  }
+
+  clear() { this.list = []; }
 }
 
-/* ============================================================
-   UI HELPERS
-   ============================================================ */
-function setScreen(which) {
-  document.getElementById('startScreen').classList.toggle('hidden',    which !== 'start');
-  document.getElementById('gameOverScreen').classList.toggle('hidden', which !== 'gameover');
-}
 
-/* ============================================================
-   INPUT
-   ============================================================ */
-window.addEventListener('keydown', e => {
-  if (e.code === 'Space' || e.code === 'ArrowUp') {
+// ── Input ────────────────────────────────────────────────────
+class Input {
+  constructor() {
+    this.swipeCbs = {};
+    this.tapCbs   = [];
+    this._ts = null;
+    this.SWIPE_MIN  = 28; // px
+    this.TAP_MAX_D  = 16;
+    this.TAP_MAX_MS = 240;
+  }
+
+  onSwipe(dir, cb) { this.swipeCbs[dir] = cb; }
+  onTap(cb)        { this.tapCbs.push(cb); }
+
+  init() {
+    const opts = { passive: false };
+    document.addEventListener('touchstart', e => this._tStart(e), opts);
+    document.addEventListener('touchend',   e => this._tEnd(e),   opts);
+    document.addEventListener('keydown',    e => this._key(e));
+  }
+
+  _tStart(e) {
     e.preventDefault();
-    if (state === 'playing') player.jump();
+    const t = e.changedTouches[0];
+    this._ts = { x: t.clientX, y: t.clientY, ms: Date.now() };
   }
+
+  _tEnd(e) {
+    e.preventDefault();
+    if (!this._ts) return;
+    const t  = e.changedTouches[0];
+    const dx = t.clientX - this._ts.x;
+    const dy = t.clientY - this._ts.y;
+    const ms = Date.now() - this._ts.ms;
+    const d  = Math.hypot(dx, dy);
+    this._ts = null;
+
+    if (d < this.TAP_MAX_D && ms < this.TAP_MAX_MS) {
+      this.tapCbs.forEach(cb => cb({ x: t.clientX, y: t.clientY }));
+      return;
+    }
+    if (d < this.SWIPE_MIN) return;
+    this._fire(Math.abs(dx) > Math.abs(dy)
+      ? (dx > 0 ? 'right' : 'left')
+      : (dy > 0 ? 'down'  : 'up'));
+  }
+
+  _key(e) {
+    const map = {
+      ArrowLeft:'left', ArrowRight:'right', ArrowUp:'up', ArrowDown:'down',
+      ' ':'up', KeyA:'left', KeyD:'right', KeyW:'up', KeyS:'down',
+    };
+    const dir = map[e.code] || map[e.key];
+    if (dir) { e.preventDefault(); this._fire(dir); }
+  }
+
+  _fire(dir) {
+    if (this.swipeCbs[dir]) this.swipeCbs[dir]();
+  }
+}
+
+
+// ── Track (pseudo-3D perspective) ────────────────────────────
+class Track {
+  constructor() {
+    this.floorT = 0; // scrolling floor offset
+  }
+
+  // Project (lane: -1|0|1, depth: 0-1) → screen {x, y, scale}
+  // cw/ch = logical canvas size
+  project(lane, depth, cw, ch) {
+    const vpY   = ch * CFG.VP_Y;
+    const nearY = ch * CFG.NEAR_Y;
+    const nearH = cw * CFG.NEAR_HALF;
+    const farH  = cw * CFG.FAR_HALF;
+    const halfW = lerp(farH, nearH, depth);
+    return {
+      x:     cw * 0.5 + lane * halfW * 0.668,
+      y:     lerp(vpY, nearY, depth),
+      scale: halfW / nearH,
+    };
+  }
+
+  draw(ctx, cw, ch, dt, speed, nosActive) {
+    const cx    = cw * 0.5;
+    const vpY   = ch * CFG.VP_Y;
+    const nearY = ch * CFG.NEAR_Y;
+    const nearH = cw * CFG.NEAR_HALF;
+    const farH  = cw * CFG.FAR_HALF;
+
+    // ── Sky / ceiling ───────────────────────────────────────
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, vpY * 1.8);
+    skyGrad.addColorStop(0, '#030306');
+    skyGrad.addColorStop(1, '#07071a');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Ambient NOS glow in background
+    if (nosActive) {
+      const g = ctx.createRadialGradient(cx, vpY, 0, cx, vpY, cw * 0.55);
+      g.addColorStop(0, 'rgba(0,212,255,0.07)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, cw, ch);
+    }
+
+    // ── Ceiling strip lights ────────────────────────────────
+    this._ceilingLights(ctx, cw, ch, cx, vpY);
+
+    // ── Track surface ───────────────────────────────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx - farH, vpY);
+    ctx.lineTo(cx + farH, vpY);
+    ctx.lineTo(cx + nearH, nearY);
+    ctx.lineTo(cx - nearH, nearY);
+    ctx.closePath();
+    const trkGrad = ctx.createLinearGradient(0, vpY, 0, nearY);
+    trkGrad.addColorStop(0,   '#08081e');
+    trkGrad.addColorStop(0.4, '#0c0c24');
+    trkGrad.addColorStop(1,   '#111132');
+    ctx.fillStyle = trkGrad;
+    ctx.fill();
+    ctx.restore();
+
+    // ── Scrolling floor grid ────────────────────────────────
+    this.floorT = (this.floorT + speed * 0.85 * dt) % 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx - farH, vpY);
+    ctx.lineTo(cx + farH, vpY);
+    ctx.lineTo(cx + nearH, nearY);
+    ctx.lineTo(cx - nearH, nearY);
+    ctx.closePath();
+    ctx.clip();
+
+    const lines = 18;
+    for (let i = 0; i < lines; i++) {
+      const t = ((i / lines) + this.floorT) % 1;
+      const te = Math.pow(t, 2.2);
+      const y  = lerp(vpY, nearY, te);
+      const hw = lerp(farH, nearH, te);
+      ctx.beginPath();
+      ctx.moveTo(cx - hw, y);
+      ctx.lineTo(cx + hw, y);
+      const a = t * 0.38 * (nosActive ? 1.6 : 1);
+      ctx.strokeStyle = nosActive
+        ? `rgba(0,212,255,${a})`
+        : `rgba(90,110,255,${a})`;
+      ctx.lineWidth = Math.max(0.5, t * 1.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── Lane dividers ───────────────────────────────────────
+    const dividers = [-1, -0.334, 0.334, 1];
+    ctx.save();
+    for (let i = 0; i < dividers.length; i++) {
+      const lp    = dividers[i];
+      const isEdge = (i === 0 || i === dividers.length - 1);
+      const x0 = cx + lp * farH;
+      const x1 = cx + lp * nearH;
+      const g = ctx.createLinearGradient(0, vpY, 0, nearY);
+      const alpha = isEdge ? [0.12, 0.60] : [0.04, 0.28];
+      g.addColorStop(0, `rgba(80,100,255,${alpha[0]})`);
+      g.addColorStop(1, `rgba(80,100,255,${alpha[1]})`);
+      ctx.beginPath();
+      ctx.moveTo(x0, vpY);
+      ctx.lineTo(x1, nearY);
+      ctx.strokeStyle = g;
+      ctx.lineWidth   = isEdge ? 2 : 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── Side shelves silhouette ─────────────────────────────
+    this._shelves(ctx, cw, ch, cx, vpY, nearY, nearH);
+
+    // ── Edge glow ───────────────────────────────────────────
+    const edgeW = nearH * 0.28;
+    const elG = ctx.createLinearGradient(cx - nearH, 0, cx - nearH + edgeW, 0);
+    elG.addColorStop(0, 'rgba(0,113,227,0.10)');
+    elG.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = elG;
+    ctx.fillRect(cx - nearH, vpY, edgeW, nearY - vpY);
+
+    const erG = ctx.createLinearGradient(cx + nearH, 0, cx + nearH - edgeW, 0);
+    erG.addColorStop(0, 'rgba(0,113,227,0.10)');
+    erG.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = erG;
+    ctx.fillRect(cx + nearH - edgeW, vpY, edgeW, nearY - vpY);
+
+    // ── Speed lines during NOS ──────────────────────────────
+    if (nosActive) this._speedLines(ctx, cw, ch, cx, vpY);
+
+    // ── Below track ─────────────────────────────────────────
+    ctx.fillStyle = '#060610';
+    ctx.fillRect(0, nearY, cw, ch - nearY);
+  }
+
+  _ceilingLights(ctx, cw, ch, cx, vpY) {
+    // Two perspective light strips running to vanishing point
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    const lx = [cx - cw * 0.12, cx + cw * 0.12];
+    lx.forEach(x => {
+      const g = ctx.createLinearGradient(x, 0, cx, vpY);
+      g.addColorStop(0, 'rgba(200,220,255,0.5)');
+      g.addColorStop(1, 'rgba(200,220,255,0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(cx, vpY);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  _shelves(ctx, cw, ch, cx, vpY, nearY, nearH) {
+    // Dark rectangular shelf silhouettes on each side
+    ctx.save();
+    ctx.globalAlpha = 0.60;
+    ctx.fillStyle = '#08080f';
+    // Left side
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(cx - nearH, nearY);
+    ctx.lineTo(cx - nearH, vpY);
+    ctx.lineTo(0, 0);
+    ctx.fill();
+    // Right side
+    ctx.beginPath();
+    ctx.moveTo(cw, 0);
+    ctx.lineTo(cx + nearH, vpY);
+    ctx.lineTo(cx + nearH, nearY);
+    ctx.lineTo(cw, 0);
+    ctx.fill();
+
+    // Subtle shelf horizontal bands on the left wall
+    ctx.globalAlpha = 0.12;
+    const shelfCols = 5;
+    for (let i = 0; i < shelfCols; i++) {
+      const fy = vpY + (i / shelfCols) * (nearY - vpY);
+      const fw = cx - lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols);
+      ctx.fillStyle = 'rgba(180,190,255,0.9)';
+      ctx.fillRect(0, fy - 1.5, fw, 2.5);
+      ctx.fillRect(cx + lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols), fy - 1.5, cw - cx - lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols), 2.5);
+    }
+    ctx.restore();
+  }
+
+  _speedLines(ctx, cw, ch, cx, vpY) {
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    const n = 22;
+    for (let i = 0; i < n; i++) {
+      const a   = (i / n) * TAU;
+      const len = rnd(cw * 0.15, cw * 0.45);
+      const r0  = cw * 0.04;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, vpY + Math.sin(a) * r0 * 0.4);
+      ctx.lineTo(cx + Math.cos(a) * len, vpY + Math.sin(a) * len * 0.5);
+      ctx.strokeStyle = '#00d4ff';
+      ctx.lineWidth   = rnd(0.5, 1.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+
+// ── Player (Cart) ────────────────────────────────────────────
+class Player {
+  constructor() {
+    this.lane    = 0;   // target lane: -1 | 0 | 1
+    this.laneT   = 0;   // interpolated
+    this.jumpT   = 0;   // 0=ground, sin(π*t)=arc
+    this.jumpAge = 0;
+    this.jumping = false;
+    this.slideAge = 0;
+    this.sliding  = false;
+    this.dead      = false;
+    this.deathAge  = 0;
+    this.collected = []; // emojis in cart (last 4 shown)
+    this.laneVel   = 0;  // for lean effect
+  }
+
+  moveLeft()  { if (this.lane > -1 && !this.dead) { this.laneVel = -1; this.lane--; return true; } return false; }
+  moveRight() { if (this.lane <  1 && !this.dead) { this.laneVel =  1; this.lane++; return true; } return false; }
+
+  jump() {
+    if (!this.jumping && !this.dead) {
+      this.jumping = true; this.jumpAge = 0; return true;
+    }
+    return false;
+  }
+
+  slide() {
+    if (!this.sliding && !this.jumping && !this.dead) {
+      this.sliding = true; this.slideAge = 0; return true;
+    }
+    return false;
+  }
+
+  collect(emoji) {
+    this.collected.push(emoji);
+    if (this.collected.length > 4) this.collected.shift();
+  }
+
+  die() { this.dead = true; this.deathAge = 0; }
+
+  update(dt) {
+    // Lane interpolation
+    this.laneT = lerp(this.laneT, this.lane, 1 - Math.pow(0.001, CFG.LANE_LERP * dt));
+    // Lean velocity decay
+    this.laneVel = lerp(this.laneVel, 0, 1 - Math.pow(0.001, 8 * dt));
+
+    // Jump arc
+    if (this.jumping) {
+      this.jumpAge += dt;
+      this.jumpT = Math.sin(Math.PI * this.jumpAge / CFG.JUMP_DUR);
+      if (this.jumpAge >= CFG.JUMP_DUR) {
+        this.jumping = false; this.jumpT = 0;
+      }
+    }
+
+    // Slide
+    if (this.sliding) {
+      this.slideAge += dt;
+      if (this.slideAge >= CFG.SLIDE_DUR) this.sliding = false;
+    }
+
+    // Death anim
+    if (this.dead) this.deathAge += dt;
+  }
+
+  jumpHeight(ch) { return this.jumpT * CFG.JUMP_PEAK * ch; }
+
+  draw(ctx, track, cw, ch) {
+    const pos   = track.project(this.laneT, CFG.PLAYER_D, cw, ch);
+    const bH    = ch * 0.115;
+    const bW    = bH * 0.88;
+    const slideScale = this.sliding ? 0.52 : 1;
+    const cartH = bH * slideScale;
+    const cartW = bW;
+    const offY  = this.jumpHeight(ch);
+    const x     = pos.x;
+    const y     = pos.y - offY;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Lean on lane change
+    const lean = this.laneVel * 0.18;
+    ctx.rotate(lean);
+
+    // Squash on landing
+    const squash = this.jumping ? 1 : (this.sliding ? 0.55 : 1);
+
+    // Death shake
+    if (this.dead && this.deathAge < 0.5) {
+      const shake = (1 - this.deathAge * 2) * 7;
+      ctx.translate(rnd(-shake, shake), rnd(-shake, shake));
+      ctx.globalAlpha = Math.max(0.15, 1 - this.deathAge * 1.6);
+    }
+
+    this._drawCart(ctx, cartW, cartH, squash);
+    ctx.restore();
+  }
+
+  _drawCart(ctx, w, h, squash) {
+    const hw = w * 0.5;
+    const hh = h * 0.5;
+
+    // Ground shadow
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    const sh = ctx.createRadialGradient(0, hh + 5, 2, 0, hh + 5, w * 0.72);
+    sh.addColorStop(0, 'rgba(0,0,0,0.5)');
+    sh.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sh;
+    ctx.beginPath();
+    ctx.ellipse(0, hh + 5, w * 0.48, h * 0.09, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    // Cart body gradient
+    const bodyG = ctx.createLinearGradient(-hw, -hh, hw, hh * 0.8);
+    bodyG.addColorStop(0, '#d8d8e0');
+    bodyG.addColorStop(0.35, '#eaeaf2');
+    bodyG.addColorStop(1, '#9898a8');
+    ctx.beginPath();
+    ctx.roundRect(-hw, -hh, w, h * 0.74, [7, 7, 4, 4]);
+    ctx.fillStyle = bodyG;
+    ctx.fill();
+
+    // Wire mesh lines
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-hw, -hh, w, h * 0.74, [7, 7, 4, 4]);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(60,60,90,0.22)';
+    ctx.lineWidth = 0.9;
+    const rows = 4, cols = 5;
+    for (let r = 1; r < rows; r++) {
+      const my = -hh + (h * 0.74 * r / rows);
+      ctx.beginPath(); ctx.moveTo(-hw, my); ctx.lineTo(hw, my); ctx.stroke();
+    }
+    for (let c = 1; c < cols; c++) {
+      const mx = -hw + (w * c / cols);
+      ctx.beginPath(); ctx.moveTo(mx, -hh); ctx.lineTo(mx, -hh + h * 0.74); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Cart body outline
+    ctx.beginPath();
+    ctx.roundRect(-hw, -hh, w, h * 0.74, [7, 7, 4, 4]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Items inside cart
+    if (this.collected.length > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(-hw + 2, -hh + 2, w - 4, h * 0.68, 4);
+      ctx.clip();
+      const show = Math.min(this.collected.length, 3);
+      const sz   = Math.min(w * 0.26, 13);
+      for (let i = 0; i < show; i++) {
+        ctx.font = `${sz}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const ix = -hw + w * 0.18 + i * w * 0.28;
+        ctx.fillText(this.collected[this.collected.length - 1 - i], ix, -hh * 0.18);
+      }
+      ctx.restore();
+    }
+
+    // Handle bar
+    const hbG = ctx.createLinearGradient(0, -hh - h * 0.09, 0, -hh);
+    hbG.addColorStop(0, '#707080');
+    hbG.addColorStop(1, '#b0b0c2');
+    ctx.beginPath();
+    ctx.roundRect(-hw * 0.65, -hh - h * 0.09, w * 0.65, h * 0.10, 5);
+    ctx.fillStyle = hbG;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Bottom frame bar
+    ctx.beginPath();
+    ctx.roundRect(-hw, hh * 0.38, w, h * 0.14, [0, 0, 4, 4]);
+    ctx.fillStyle = '#787888';
+    ctx.fill();
+
+    // Accent glow line
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    const acG = ctx.createLinearGradient(-hw, 0, hw, 0);
+    acG.addColorStop(0, 'rgba(0,113,227,0)');
+    acG.addColorStop(0.5, 'rgba(0,113,227,0.8)');
+    acG.addColorStop(1, 'rgba(0,113,227,0)');
+    ctx.fillStyle = acG;
+    ctx.fillRect(-hw, hh * 0.28, w, 2.5);
+    ctx.restore();
+
+    // Wheels
+    const wheelR = h * 0.115;
+    const wheelY = hh + wheelR * 0.42;
+    [-hw * 0.58, hw * 0.58].forEach(wx => {
+      // Wheel shadow
+      ctx.beginPath();
+      ctx.ellipse(wx, wheelY + wheelR * 0.28, wheelR * 0.85, wheelR * 0.28, 0, 0, TAU);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fill();
+      // Tire
+      const wG = ctx.createRadialGradient(wx - wheelR * 0.22, wheelY - wheelR * 0.22, 0, wx, wheelY, wheelR);
+      wG.addColorStop(0, '#424252');
+      wG.addColorStop(1, '#181820');
+      ctx.beginPath();
+      ctx.arc(wx, wheelY, wheelR, 0, TAU);
+      ctx.fillStyle = wG;
+      ctx.fill();
+      ctx.strokeStyle = '#585868';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Hub
+      ctx.beginPath();
+      ctx.arc(wx, wheelY, wheelR * 0.33, 0, TAU);
+      ctx.fillStyle = '#9090a0';
+      ctx.fill();
+    });
+
+    // Glass sheen on body
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-hw, -hh, w, h * 0.74, [7, 7, 4, 4]);
+    ctx.clip();
+    const sheen = ctx.createLinearGradient(-hw, -hh, hw * 0.3, -hh + h * 0.35);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.18)');
+    sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(-hw, -hh, w, h * 0.74);
+    ctx.restore();
+  }
+
+  // Returns AABB in screen coords for collision
+  getBox(track, cw, ch) {
+    const pos  = track.project(this.laneT, CFG.PLAYER_D, cw, ch);
+    const bH   = ch * 0.115;
+    const bW   = bH * 0.88;
+    const sH   = this.sliding ? bH * 0.48 : bH * 0.85;
+    const offY = this.jumpHeight(ch);
+    return {
+      x: pos.x - bW * 0.42,
+      y: pos.y - offY - sH,
+      w: bW * 0.84,
+      h: sH,
+    };
+  }
+}
+
+
+// ── Game Object (collectible / hazard) ───────────────────────
+class GameObject {
+  constructor(type, lane, emoji) {
+    this.type    = type;  // 'collect' | 'hazard'
+    this.lane    = lane;
+    this.depth   = 0;
+    this.emoji   = emoji;
+    this.dead    = false;
+    this.taken   = false;
+    this.phase   = rnd(0, TAU);
+    this.age     = 0;
+  }
+
+  update(dt, speed) {
+    this.depth += speed * dt;
+    this.age   += dt;
+    if (this.depth > 1.08) this.dead = true;
+  }
+
+  draw(ctx, track, cw, ch) {
+    if (this.dead) return;
+    const pos  = track.project(this.lane, this.depth, cw, ch);
+    const base = 38;
+    const s    = pos.scale;
+    const size = base * s * 2.2;
+    if (size < 4) return;
+
+    const pulse = 1 + Math.sin(this.phase + this.age * 4) * 0.05;
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.scale(pulse, pulse);
+    this.type === 'collect'
+      ? this._drawCollectible(ctx, size)
+      : this._drawHazard(ctx, size);
+    ctx.restore();
+  }
+
+  _drawCollectible(ctx, size) {
+    const r = size * 0.5;
+
+    // Outer halo
+    const halo = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.5);
+    halo.addColorStop(0, 'rgba(255,214,10,0.14)');
+    halo.addColorStop(1, 'rgba(255,214,10,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, TAU); ctx.fill();
+
+    // Token body
+    const body = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
+    body.addColorStop(0, 'rgba(255,255,255,0.20)');
+    body.addColorStop(0.5, 'rgba(24,24,48,0.90)');
+    body.addColorStop(1,   'rgba(8,8,20,0.97)');
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU);
+    ctx.fillStyle = body; ctx.fill();
+
+    // Gold ring
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,214,10,0.75)';
+    ctx.lineWidth = Math.max(1, r * 0.13);
+    ctx.stroke();
+
+    // Glass arc sheen
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.82, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+    ctx.lineWidth = Math.max(0.5, r * 0.09);
+    ctx.stroke();
+    ctx.restore();
+
+    // Emoji
+    ctx.font = `${Math.max(8, r * 1.05)}px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(this.emoji, 0, r * 0.04);
+
+    // Top-left shine
+    const shine = ctx.createRadialGradient(-r * 0.28, -r * 0.28, 0, -r * 0.28, -r * 0.28, r * 0.36);
+    shine.addColorStop(0, 'rgba(255,255,255,0.28)');
+    shine.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shine;
+    ctx.beginPath(); ctx.arc(-r * 0.28, -r * 0.28, r * 0.36, 0, TAU); ctx.fill();
+  }
+
+  _drawHazard(ctx, size) {
+    const r   = size * 0.5;
+    const flk = 0.6 + Math.sin(this.age * 5) * 0.18;
+
+    // Danger aura
+    const aura = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.7);
+    aura.addColorStop(0, `rgba(255,59,48,${flk * 0.22})`);
+    aura.addColorStop(1, 'rgba(255,59,48,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.7, 0, TAU); ctx.fill();
+
+    // Spiky star body
+    const spikes = 8;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+      const a  = (i / (spikes * 2)) * TAU - Math.PI * 0.5;
+      const ra = i % 2 === 0 ? r : r * 0.66;
+      if (i === 0) ctx.moveTo(Math.cos(a) * ra, Math.sin(a) * ra);
+      else         ctx.lineTo(Math.cos(a) * ra, Math.sin(a) * ra);
+    }
+    ctx.closePath();
+    const hzG = ctx.createRadialGradient(0, -r * 0.18, 0, 0, 0, r);
+    hzG.addColorStop(0, '#350a08');
+    hzG.addColorStop(0.6, '#1e0404');
+    hzG.addColorStop(1,   '#0a0101');
+    ctx.fillStyle = hzG; ctx.fill();
+    ctx.strokeStyle = `rgba(255,59,48,${0.55 + flk * 0.25})`;
+    ctx.lineWidth = Math.max(1, r * 0.10);
+    ctx.stroke();
+
+    // Skull emoji
+    ctx.font = `${Math.max(8, r * 1.02)}px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('☠️', 0, r * 0.04);
+
+    // Red top-left accent
+    const rsh = ctx.createRadialGradient(-r * 0.22, -r * 0.22, 0, -r * 0.22, -r * 0.22, r * 0.3);
+    rsh.addColorStop(0, 'rgba(255,80,80,0.30)');
+    rsh.addColorStop(1, 'rgba(255,59,48,0)');
+    ctx.fillStyle = rsh;
+    ctx.beginPath(); ctx.arc(-r * 0.22, -r * 0.22, r * 0.3, 0, TAU); ctx.fill();
+  }
+
+  getBox(track, cw, ch) {
+    const pos  = track.project(this.lane, this.depth, cw, ch);
+    const base = 38;
+    const size = base * pos.scale * 2.2 * 0.65; // slightly inset for leniency
+    return { x: pos.x - size * 0.5, y: pos.y - size * 0.5, w: size, h: size };
+  }
+}
+
+// ── Object Manager ───────────────────────────────────────────
+class ObjectManager {
+  constructor() {
+    this.items    = [];
+    this.timer    = 0;
+    this.interval = 1 / CFG.SPAWN_INIT;
+  }
+
+  reset() {
+    this.items    = [];
+    this.timer    = 0;
+    this.interval = 1 / CFG.SPAWN_INIT;
+  }
+
+  update(dt, speed, hazRatio) {
+    this.timer += dt;
+    if (this.timer >= this.interval) {
+      this.timer = 0;
+      this._spawn(hazRatio);
+    }
+    for (const o of this.items) o.update(dt, speed);
+    this.items = this.items.filter(o => !o.dead);
+  }
+
+  _spawn(hazRatio) {
+    const lane  = rndInt(-1, 1);
+    const isHaz = Math.random() < hazRatio;
+    const emoji = isHaz
+      ? '☠️'
+      : CFG.ITEMS[rndInt(0, CFG.ITEMS.length - 1)];
+    this.items.push(new GameObject(isHaz ? 'hazard' : 'collect', lane, emoji));
+
+    // Sometimes add a second object in a different lane
+    if (Math.random() < 0.28) {
+      const lanes2 = [-1, 0, 1].filter(l => l !== lane);
+      const lane2  = lanes2[rndInt(0, lanes2.length - 1)];
+      const isHaz2 = Math.random() < hazRatio * 0.75;
+      this.items.push(new GameObject(
+        isHaz2 ? 'hazard' : 'collect',
+        lane2,
+        isHaz2 ? '☠️' : CFG.ITEMS[rndInt(0, CFG.ITEMS.length - 1)]
+      ));
+    }
+  }
+
+  checkCollisions(player, track, cw, ch) {
+    const pBox   = player.getBox(track, cw, ch);
+    const result = { collected: [], hit: false };
+
+    for (const obj of this.items) {
+      if (obj.dead || obj.taken) continue;
+      if (obj.depth < CFG.PLAYER_D - 0.09 || obj.depth > CFG.PLAYER_D + 0.06) continue;
+
+      const oBox = obj.getBox(track, cw, ch);
+      if (!this._overlap(pBox, oBox)) continue;
+
+      if (obj.type === 'collect') {
+        obj.taken = true;
+        obj.dead  = true;
+        result.collected.push(obj.emoji);
+      } else {
+        // Can jump over ground-level hazards
+        if (!player.jumping || player.jumpT < 0.35) {
+          result.hit = true;
+        }
+      }
+    }
+    return result;
+  }
+
+  _overlap(a, b) {
+    // 20% inset on each box for a forgiving hitbox
+    const inset = 0.80;
+    const ax = a.x + a.w * (1 - inset) * 0.5, aw = a.w * inset;
+    const bx = b.x + b.w * (1 - inset) * 0.5, bw = b.w * inset;
+    return ax < bx + bw && ax + aw > bx && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  draw(ctx, track, cw, ch) {
+    // Draw far-to-near so nearer objects render on top
+    const sorted = this.items.slice().sort((a, b) => a.depth - b.depth);
+    for (const o of sorted) o.draw(ctx, track, cw, ch);
+  }
+
+  clear() { this.items = []; }
+}
+
+
+// ── HUD controller ───────────────────────────────────────────
+class HUD {
+  constructor() {
+    this.el       = document.getElementById('hud');
+    this.scoreEl  = document.getElementById('hud-score');
+    this.distEl   = document.getElementById('hud-dist');
+    this.nosFill  = document.getElementById('nos-fill');
+    this.nosReady = document.getElementById('nos-ready');
+  }
+
+  show() { this.el.classList.remove('hud-off'); }
+  hide() { this.el.classList.add('hud-off'); }
+
+  setScore(v)    { this.scoreEl.textContent = Math.floor(v); }
+  setDist(v)     { this.distEl.textContent  = Math.floor(v) + ' m'; }
+
+  setNOS(charge, active) {
+    const pct  = clamp(charge, 0, 100);
+    this.nosFill.style.width = pct + '%';
+    this.nosFill.classList.remove('nos-charged', 'nos-active');
+    if (active)       this.nosFill.classList.add('nos-active');
+    else if (pct >= 100) this.nosFill.classList.add('nos-charged');
+
+    // Ready hint
+    if (pct >= 100 && !active) {
+      this.nosReady.classList.remove('nos-ready-off');
+      this.nosReady.classList.add('nos-ready-show');
+    } else {
+      this.nosReady.classList.remove('nos-ready-show');
+      if (pct < 98) this.nosReady.classList.add('nos-ready-off');
+    }
+  }
+}
+
+// ── Screen Manager ───────────────────────────────────────────
+class Screens {
+  constructor() {
+    this.map = {
+      menu:     document.getElementById('screen-menu'),
+      tutorial: document.getElementById('screen-tutorial'),
+      pause:    document.getElementById('screen-pause'),
+      gameover: document.getElementById('screen-gameover'),
+    };
+    this.cur = null;
+  }
+
+  show(name) {
+    if (this.cur) this.map[this.cur]?.classList.remove('active');
+    this.cur = name || null;
+    if (name) this.map[name]?.classList.add('active');
+  }
+
+  hide() { this.show(null); }
+}
+
+// ── Toast ────────────────────────────────────────────────────
+class Toast {
+  constructor() {
+    this.el   = document.getElementById('toast');
+    this.txt  = document.getElementById('toast-text');
+    this._tid = null;
+  }
+
+  show(msg, ms = 1600) {
+    if (this._tid) clearTimeout(this._tid);
+    this.txt.textContent = msg;
+    this.el.classList.remove('toast-off', 'toast-show');
+    void this.el.offsetWidth; // reflow
+    this.el.classList.add('toast-show');
+    this._tid = setTimeout(() => {
+      this.el.classList.remove('toast-show');
+      setTimeout(() => this.el.classList.add('toast-off'), 200);
+    }, ms);
+  }
+}
+
+
+// ── Game ─────────────────────────────────────────────────────
+class Game {
+  constructor() {
+    this.canvas = document.getElementById('game-canvas');
+    this.ctx    = this.canvas.getContext('2d');
+    this.dpr    = 1;
+    this.cw     = 0;
+    this.ch     = 0;
+
+    // State
+    this.state   = 'MENU'; // MENU | PLAYING | PAUSED | GAMEOVER
+
+    // Systems
+    this.track    = new Track();
+    this.player   = new Player();
+    this.objects  = new ObjectManager();
+    this.particles = new Particles();
+    this.input    = new Input();
+    this.audio    = new AudioSystem();
+    this.hud      = new HUD();
+    this.screens  = new Screens();
+    this.toast    = new Toast();
+
+    // Game vars
+    this.score     = 0;
+    this.distance  = 0;
+    this.speed     = CFG.SPEED_INIT;
+    this.spawnRate = CFG.SPAWN_INIT;
+    this.hazRatio  = CFG.HAZ_INIT;
+    this.nosCharge = 0;
+    this.nosActive = false;
+    this.elapsed   = 0;
+    this.level     = 1;
+    this.best      = 0;
+
+    this._lastTime = 0;
+    this._sparkAcc = 0;
+
+    // Menu idle anim
+    this._idleT = 0;
+  }
+
+  init() {
+    this.best = parseInt(localStorage.getItem('hayde_best') || '0', 10);
+    this._refreshBestUI();
+
+    this._resize();
+    this.audio.boot();
+    this.input.init();
+    this._bindUI();
+    this.screens.show('menu');
+    this.hud.hide();
+
+    requestAnimationFrame(ts => this._loop(ts));
+  }
+
+  // ── UI wiring ───────────────────────────────────────────────
+  _bindUI() {
+    const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+
+    on('btn-play',       () => this._startGame());
+    on('btn-how',        () => this.screens.show('tutorial'));
+    on('btn-tut-go',     () => this._startGame());
+    on('btn-pause',      () => this._pause());
+    on('btn-resume',     () => this._resume());
+    on('btn-pause-menu', () => this._goMenu());
+    on('btn-restart',    () => this._startGame());
+    on('btn-go-menu',    () => this._goMenu());
+    on('nos-btn',        () => this._tryNOS());
+
+    this.input.onSwipe('left',  () => this._left());
+    this.input.onSwipe('right', () => this._right());
+    this.input.onSwipe('up',    () => this._up());
+    this.input.onSwipe('down',  () => this._down());
+    this.input.onTap(e          => this._tap(e));
+
+    window.addEventListener('resize',            () => this._resize());
+    window.addEventListener('orientationchange', () => setTimeout(() => this._resize(), 120));
+  }
+
+  // ── Resize ──────────────────────────────────────────────────
+  _resize() {
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2× for perf
+    this.cw  = window.innerWidth;
+    this.ch  = window.innerHeight;
+    this.canvas.width  = this.cw * this.dpr;
+    this.canvas.height = this.ch * this.dpr;
+    this.canvas.style.width  = this.cw + 'px';
+    this.canvas.style.height = this.ch + 'px';
+  }
+
+  // ── Gameplay actions ─────────────────────────────────────────
+  _left()  { if (this.state !== 'PLAYING') return; this.audio.resume(); this.player.moveLeft(); }
+  _right() { if (this.state !== 'PLAYING') return; this.audio.resume(); this.player.moveRight(); }
+  _up()    {
+    if (this.state !== 'PLAYING') return;
+    this.audio.resume();
+    if (this.player.jump()) this.audio.jump();
+  }
+  _down()  {
+    if (this.state !== 'PLAYING') return;
+    this.audio.resume();
+    this.player.slide();
+    this._tryNOS();
+  }
+  _tap(e) {
+    this.audio.resume();
+    if (this.state !== 'PLAYING') return;
+    // Tap bottom-right corner → NOS
+    if (e.x > this.cw * 0.65 && e.y > this.ch * 0.65) this._tryNOS();
+  }
+  _tryNOS() {
+    if (this.state !== 'PLAYING') return;
+    if (this.nosCharge >= CFG.NOS_MIN && !this.nosActive) {
+      this.nosActive = true;
+      this.audio.nos();
+    }
+  }
+
+  // ── State transitions ─────────────────────────────────────────
+  _startGame() {
+    this.score     = 0;
+    this.distance  = 0;
+    this.speed     = CFG.SPEED_INIT;
+    this.spawnRate = CFG.SPAWN_INIT;
+    this.hazRatio  = CFG.HAZ_INIT;
+    this.nosCharge = 0;
+    this.nosActive = false;
+    this.elapsed   = 0;
+    this.level     = 1;
+
+    this.player   = new Player();
+    this.objects.reset();
+    this.particles.clear();
+
+    this.screens.hide();
+    this.hud.show();
+    this.hud.setScore(0);
+    this.hud.setDist(0);
+    this.hud.setNOS(0, false);
+    this.state = 'PLAYING';
+    this.audio.resume();
+  }
+
+  _pause() {
+    if (this.state !== 'PLAYING') return;
+    this.state = 'PAUSED';
+    document.getElementById('pause-score').textContent = Math.floor(this.score);
+    this.screens.show('pause');
+  }
+
+  _resume() {
+    if (this.state !== 'PAUSED') return;
+    this.state = 'PLAYING';
+    this.screens.hide();
+  }
+
+  _goMenu() {
+    this.state = 'MENU';
+    this.screens.show('menu');
+    this.hud.hide();
+    this._refreshBestUI();
+  }
+
+  _gameOver() {
+    this.state     = 'GAMEOVER';
+    this.nosActive = false;
+    this.player.die();
+    this.audio.die();
+
+    if (this.score > this.best) {
+      this.best = Math.floor(this.score);
+      localStorage.setItem('hayde_best', this.best);
+    }
+
+    document.getElementById('go-score').textContent = Math.floor(this.score);
+    document.getElementById('go-dist').textContent  = Math.floor(this.distance) + ' m';
+    document.getElementById('go-best').textContent  = this.best;
+
+    setTimeout(() => {
+      this.screens.show('gameover');
+      this.hud.hide();
+    }, 900);
+  }
+
+  _refreshBestUI() {
+    document.getElementById('menu-best').textContent = this.best;
+  }
+
+  // ── Main loop ─────────────────────────────────────────────────
+  _loop(ts) {
+    if (!this._lastTime) this._lastTime = ts;
+    const dt = clamp((ts - this._lastTime) / 1000, 0, 0.05);
+    this._lastTime = ts;
+
+    this._update(dt);
+    this._render(dt);
+
+    requestAnimationFrame(t => this._loop(t));
+  }
+
+  // ── Update ────────────────────────────────────────────────────
+  _update(dt) {
+    if (this.state === 'GAMEOVER') {
+      // Keep player death anim + particles going briefly
+      this.player.update(dt);
+      this.particles.update(dt);
+      return;
+    }
+    if (this.state === 'MENU') {
+      this._idleT += dt;
+      return;
+    }
+    if (this.state !== 'PLAYING') return;
+
+    this.elapsed += dt;
+
+    // ── Progression ──
+    const prevLevel   = this.level;
+    this.speed     = Math.min(CFG.SPEED_MAX,  CFG.SPEED_INIT  + this.elapsed * CFG.SPEED_INC);
+    this.spawnRate = Math.min(CFG.SPAWN_MAX,  CFG.SPAWN_INIT  + this.elapsed * CFG.SPAWN_INC);
+    this.hazRatio  = Math.min(CFG.HAZ_MAX,    CFG.HAZ_INIT    + this.elapsed * 0.0018);
+    this.objects.interval = 1 / this.spawnRate;
+    this.level     = Math.floor(this.elapsed / 12) + 1;
+    if (this.level > prevLevel) {
+      this.toast.show(`Level ${this.level} 🔥`);
+      this.audio.levelUp();
+    }
+
+    // ── NOS ──
+    const effSpeed = this.nosActive ? this.speed * CFG.NOS_SPEED : this.speed;
+    if (this.nosActive) {
+      this.nosCharge -= CFG.NOS_DRAIN * dt;
+      if (this.nosCharge <= 0) { this.nosCharge = 0; this.nosActive = false; }
+    }
+
+    // ── Scoring ──
+    const speedFactor = effSpeed / CFG.SPEED_INIT;
+    this.score    += CFG.SCORE_DIST * speedFactor * (this.nosActive ? CFG.NOS_SCORE : 1) * dt;
+    this.distance += effSpeed * 7 * dt;
+
+    // ── Update player ──
+    this.player.update(dt);
+
+    // ── Update objects ──
+    this.objects.update(dt, effSpeed, this.hazRatio);
+
+    // ── Collisions ──
+    const { collected, hit } = this.objects.checkCollisions(this.player, this.track, this.cw, this.ch);
+    for (const emoji of collected) {
+      const pos = this.track.project(this.player.laneT, CFG.PLAYER_D, this.cw, this.ch);
+      this.particles.collectPop(pos.x, pos.y - this.ch * 0.07, emoji);
+      this.player.collect(emoji);
+      this.score    += CFG.SCORE_ITEM;
+      this.nosCharge = clamp(this.nosCharge + CFG.NOS_CHARGE, 0, CFG.NOS_MAX);
+      this.audio.collect();
+    }
+    if (hit) { this._gameOver(); return; }
+
+    // ── Sparks ──
+    this._sparkAcc += dt;
+    const sparkInterval = 1 / 28;
+    while (this._sparkAcc >= sparkInterval) {
+      this._sparkAcc -= sparkInterval;
+      const pos     = this.track.project(this.player.laneT, CFG.PLAYER_D, this.cw, this.ch);
+      const cartH   = this.ch * 0.115;
+      const sx      = pos.x;
+      const sy      = pos.y + cartH * 0.46;
+      const sf      = clamp((speedFactor - 1) / 4, 0, 1);
+      const cnt     = Math.floor(lerp(CFG.SPARK_MIN, CFG.SPARK_MAX, sf));
+
+      if (cnt > 0) {
+        const cols = this.nosActive
+          ? ['#00d4ff','#bf5af2','#ffffff','#0071e3']
+          : ['#ff9f0a','#ffd60a','#ff6b35','#ffcc02'];
+        this.particles.sparks(sx, sy, cnt, this.nosActive ? 1.4 : 1, cols);
+      }
+      if (this.nosActive) this.particles.nosTrail(sx, sy - cartH * 0.5);
+    }
+
+    // ── Particles ──
+    this.particles.update(dt);
+
+    // ── HUD ──
+    this.hud.setScore(this.score);
+    this.hud.setDist(this.distance);
+    this.hud.setNOS(this.nosCharge, this.nosActive);
+  }
+
+  // ── Render ────────────────────────────────────────────────────
+  _render(dt) {
+    const ctx = this.ctx;
+    const { cw, ch, dpr } = this;
+
+    // Reset transform to DPR scale at start of every frame
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+
+    // Determine render speed for track animation
+    const effSpeed = (this.state === 'PLAYING' && this.nosActive)
+      ? this.speed * CFG.NOS_SPEED
+      : this.speed;
+    const trackSpeed = (this.state === 'PLAYING') ? effSpeed
+      : (this.state === 'MENU' || this.state === 'PAUSED') ? 0.12
+      : 0.06; // slow on gameover
+
+    this.track.draw(ctx, cw, ch, dt, trackSpeed, this.nosActive && this.state === 'PLAYING');
+
+    if (this.state === 'MENU') {
+      this._renderMenuIdle(ctx, cw, ch);
+      return;
+    }
+
+    // Game objects (behind player)
+    this.objects.draw(ctx, this.track, cw, ch);
+
+    // Particles (sparks)
+    this.particles.draw(ctx);
+
+    // Player cart
+    this.player.draw(ctx, this.track, cw, ch);
+
+    // NOS screen overlay
+    if (this.nosActive) {
+      ctx.fillStyle = 'rgba(0,212,255,0.035)';
+      ctx.fillRect(0, 0, cw, ch);
+      // Edge vignette in cyan
+      const vg = ctx.createRadialGradient(cw * 0.5, ch * 0.5, ch * 0.2, cw * 0.5, ch * 0.5, ch * 0.85);
+      vg.addColorStop(0, 'rgba(0,212,255,0)');
+      vg.addColorStop(1, 'rgba(0,212,255,0.08)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, cw, ch);
+    }
+  }
+
+  _renderMenuIdle(ctx, cw, ch) {
+    // Subtle animated idle cart in the distance
+    const t  = this._idleT;
+    const cx = cw * 0.5;
+    const cy = ch * 0.62 + Math.sin(t * 1.4) * 6;
+
+    ctx.save();
+    ctx.globalAlpha = 0.13;
+    ctx.translate(cx, cy);
+    ctx.scale(3.2, 3.2);
+    const tempPlayer = { collected: [], sliding: false, dead: false, deathAge: 0, laneVel: 0, jumpT: 0 };
+    Player.prototype._drawCart.call(tempPlayer, ctx, 42, 48, 1);
+    ctx.restore();
+  }
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const game = new Game();
+  game.init();
 });
-
-// Pointer events cover mouse + touch on all modern browsers
-canvas.addEventListener('pointerdown', e => {
-  e.preventDefault();
-  if (state === 'playing') player.jump();
-});
-
-// Fallback for browsers without Pointer Events (older mobile WebViews)
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  if (state === 'playing') player.jump();
-}, { passive: false });
-
-/* ============================================================
-   INIT
-   ============================================================ */
-(function init() {
-  resize();
-  buildBg();
-  player.reset();
-
-  // Populate best score on start screen
-  document.getElementById('startBest').textContent = bestScore;
-
-  // Button listeners
-  document.getElementById('startBtn').addEventListener('click', startGame);
-  document.getElementById('restartBtn').addEventListener('click', startGame);
-
-  // Refit canvas on window resize
-  window.addEventListener('resize', () => {
-    resize();
-    buildBg();
-    // Reposition player to new ground; refit obstacle y-positions
-    player.reset();
-    for (const o of obstacles) o.y = H - CFG.GROUND_H - o.h;
-  });
-
-  setScreen('start');
-  lastTs = performance.now();
-  requestAnimationFrame(loop);
-}());
