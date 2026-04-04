@@ -238,14 +238,17 @@ class Input {
   }
 
   _tStart(e) {
+    // Let the browser handle taps on interactive elements (buttons, links)
+    // so that synthetic click events still fire on them.
+    if (e.target.closest('button, a, [role="button"]')) return;
     e.preventDefault();
     const t = e.changedTouches[0];
     this._ts = { x: t.clientX, y: t.clientY, ms: Date.now() };
   }
 
   _tEnd(e) {
+    if (!this._ts) return;  // _tStart was skipped (interactive element tap)
     e.preventDefault();
-    if (!this._ts) return;
     const t  = e.changedTouches[0];
     const dx = t.clientX - this._ts.x;
     const dy = t.clientY - this._ts.y;
