@@ -2,58 +2,137 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>🛒 Supermarket Dash</title>
-
-  <!-- PWA / Home Screen -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#07071a">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Supermarket Dash">
-  <link rel="apple-touch-icon" href="icon.svg">
-
+  <meta name="theme-color" content="#000000">
+  <title>Hayde</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
 </head>
 <body>
-  <div id="app">
+  <canvas id="game-canvas"></canvas>
 
-    <canvas id="gameCanvas"></canvas>
-
-    <!-- ── Start Screen ── -->
-    <div id="startScreen" class="overlay">
-      <div class="title-wrap">
-        <span class="title-emoji">🛒</span>
-        <h1 class="title">SUPERMARKET<br>DASH</h1>
-        <span class="title-emoji">💨</span>
+  <!-- ── MENU ────────────────────────────────── -->
+  <div id="screen-menu" class="screen active">
+    <div class="card">
+      <div class="logo">
+        <div class="logo-icon-ring"><span class="logo-emoji">🛒</span></div>
+        <h1 class="logo-title">HAYDE</h1>
+        <p class="logo-sub">Supermarket Runner</p>
       </div>
-      <p class="subtitle">avoid the groceries. become legend.</p>
-      <p class="best-tag">🏆 Best &nbsp;<span id="startBest">0</span></p>
-      <button id="startBtn" class="btn">Let's GO! 🚀</button>
-      <p class="hint">tap · click · space to jump</p>
-    </div>
-
-    <!-- ── Game Over Screen ── -->
-    <div id="gameOverScreen" class="overlay hidden">
-      <h2 id="overTitle" class="over-title">💀 Wiped Out!</h2>
-      <p id="overMsg" class="over-msg">A milk carton got you. Classic.</p>
-      <div class="score-row">
-        <div class="score-block">
-          <span class="score-label">Score</span>
-          <span id="finalScore" class="score-num">0</span>
-        </div>
-        <div class="score-block">
-          <span class="score-label">Best</span>
-          <span id="finalBest" class="score-num">0</span>
-        </div>
+      <div class="btn-stack">
+        <button class="btn btn-primary" id="btn-play">Play</button>
+        <button class="btn btn-ghost" id="btn-how">How to Play</button>
       </div>
-      <button id="restartBtn" class="btn">Try Again 😤</button>
+      <div class="best-chip" id="menu-best-chip">
+        <span class="best-chip-label">Best</span>
+        <span class="best-chip-val" id="menu-best">0</span>
+      </div>
     </div>
-
-    <!-- ── Motivation Toast ── -->
-    <div id="toast" class="toast hidden"></div>
-
   </div>
+
+  <!-- ── TUTORIAL ─────────────────────────────── -->
+  <div id="screen-tutorial" class="screen">
+    <div class="card tut-card">
+      <h2 class="card-title">How to Play</h2>
+      <ul class="tut-list">
+        <li class="tut-row">
+          <span class="tut-ico">⬅️ ➡️</span>
+          <div><strong>Swipe left / right</strong><em>Change lanes</em></div>
+        </li>
+        <li class="tut-row">
+          <span class="tut-ico">⬆️</span>
+          <div><strong>Swipe up</strong><em>Jump over hazards</em></div>
+        </li>
+        <li class="tut-row">
+          <span class="tut-ico">⬇️</span>
+          <div><strong>Swipe down</strong><em>Slide under obstacles</em></div>
+        </li>
+        <li class="tut-row">
+          <span class="tut-ico">🛒</span>
+          <div><strong>Collect items</strong><em>Points + charges NOS</em></div>
+        </li>
+        <li class="tut-row tut-danger">
+          <span class="tut-ico">☠️</span>
+          <div><strong>Avoid skulls</strong><em>Instant game over</em></div>
+        </li>
+        <li class="tut-row tut-nos">
+          <span class="tut-ico">⚡</span>
+          <div><strong>Tap NOS when full</strong><em>Speed burst + bonus points</em></div>
+        </li>
+      </ul>
+      <button class="btn btn-primary" id="btn-tut-go">Let's Go!</button>
+    </div>
+  </div>
+
+  <!-- ── PAUSE ─────────────────────────────────── -->
+  <div id="screen-pause" class="screen">
+    <div class="card compact-card">
+      <h2 class="card-title">Paused</h2>
+      <div class="pause-stat">
+        <span class="pause-stat-label">Score</span>
+        <span class="pause-stat-val" id="pause-score">0</span>
+      </div>
+      <div class="btn-stack">
+        <button class="btn btn-primary" id="btn-resume">Resume</button>
+        <button class="btn btn-ghost" id="btn-pause-menu">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── GAME OVER ─────────────────────────────── -->
+  <div id="screen-gameover" class="screen">
+    <div class="card">
+      <div class="go-skull">☠️</div>
+      <h2 class="go-title">Wiped Out</h2>
+      <div class="stats-block">
+        <div class="stat-row">
+          <span class="stat-lbl">Score</span>
+          <span class="stat-val" id="go-score">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-lbl">Distance</span>
+          <span class="stat-val" id="go-dist">0 m</span>
+        </div>
+        <div class="stat-row stat-row-best">
+          <span class="stat-lbl">Best</span>
+          <span class="stat-val gold" id="go-best">0</span>
+        </div>
+      </div>
+      <div class="btn-stack">
+        <button class="btn btn-primary" id="btn-restart">Play Again</button>
+        <button class="btn btn-ghost" id="btn-go-menu">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HUD ───────────────────────────────────── -->
+  <div id="hud" class="hud hud-off">
+    <div class="hud-left">
+      <div class="hud-score" id="hud-score">0</div>
+      <div class="hud-dist"  id="hud-dist">0 m</div>
+    </div>
+    <div class="hud-center">
+      <button class="nos-wrap" id="nos-btn" aria-label="Activate NOS">
+        <div class="nos-track">
+          <div class="nos-fill" id="nos-fill"></div>
+        </div>
+        <span class="nos-label">NOS</span>
+      </button>
+    </div>
+    <div class="hud-right">
+      <button class="pause-btn" id="btn-pause" aria-label="Pause">
+        <span class="pause-icon"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── TOASTS ────────────────────────────────── -->
+  <div id="toast"     class="toast toast-off"><span id="toast-text"></span></div>
+  <div id="nos-ready" class="nos-ready nos-ready-off">⚡ NOS READY — Tap to activate</div>
+
   <script src="script.js"></script>
 </body>
 </html>
