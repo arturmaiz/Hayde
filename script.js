@@ -1415,7 +1415,7 @@ class Game {
     this.state     = 'GAMEOVER';
     this.nosActive = false;
     this.player.die();
-    this.audio.hayde();
+    this.audio.die();
 
     if (this.score > this.best) {
       this.best = Math.floor(this.score);
@@ -1522,7 +1522,7 @@ class Game {
       }
       this.lastCollectTime = now;
     }
-    if (hit) { this._gameOver(); return; }
+    if (hit) { this.audio.hayde(); this._gameOver(); return; }
 
     // ── Sparks ──
     this._sparkAcc += dt;
