@@ -1101,7 +1101,20 @@ class Game {
 
   // ── UI wiring ───────────────────────────────────────────────
   _bindUI() {
-    const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+    const on = (id, fn) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      let fired = false;
+      const handler = (e) => {
+        if (fired) return;
+        fired = true;
+        e.preventDefault();
+        fn();
+        setTimeout(() => fired = false, 400);
+      };
+      el.addEventListener('touchend', handler, { passive: false });
+      el.addEventListener('click', handler);
+    };
 
     on('btn-play',       () => this._startGame());
     on('btn-how',        () => this.screens.show('tutorial'));
