@@ -43,11 +43,11 @@ icon.svg     — app icon (shown on iPhone home screen)
 - [x] Parallax star background
 - [x] PWA support (Add to Home Screen)
 - [x] Touch/pointer/keyboard input
-- [ ] Supermarket item obstacles (cart, milk, bread, cone...)
-- [ ] Funny & beautiful UI redesign
-- [ ] Web Audio jump + land sounds
-- [ ] Motivational voice shoutouts at milestones
-- [ ] Progress effects (speed lines, combo counter, screen flash)
+- [x] Supermarket item obstacles (cart, milk, bread, cone...)
+- [x] Funny & beautiful UI redesign
+- [x] Web Audio jump + land sounds
+- [x] Motivational voice shoutouts at milestones
+- [x] Progress effects (speed lines, combo counter, screen flash)
 
 ## Deployment
 - Branch: `main`

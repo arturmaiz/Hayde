@@ -166,6 +166,7 @@ function showToast(msg) {
     setTimeout(() => el.classList.add('hidden'), 220);
   }, 2200);
   snd('milestone');
+  triggerFlash('#ffe94d', 0.22);
 }
 
 function checkToasts() {
@@ -660,6 +661,72 @@ function drawHUD() {
 }
 
 /* ============================================================
+   SCREEN FLASH
+   ============================================================ */
+let flashAlpha = 0;
+let flashColor = '#fff';
+
+function triggerFlash(color, alpha = 0.55) {
+  flashColor = color;
+  flashAlpha = alpha;
+}
+
+function drawFlash() {
+  if (flashAlpha <= 0) return;
+  ctx.globalAlpha = flashAlpha;
+  ctx.fillStyle   = flashColor;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  flashAlpha     = Math.max(0, flashAlpha - 0.04);   // fade each frame
+}
+
+/* ============================================================
+   COMBO COUNTER
+   ============================================================ */
+let combo        = 0;
+let comboDisplay = 0;   // shown value (delayed so it's visible)
+let comboTimer   = 0;   // seconds remaining to show combo
+
+function resetCombo() {
+  combo        = 0;
+  comboDisplay = 0;
+  comboTimer   = 0;
+}
+
+function updateCombo(dt) {
+  if (comboTimer > 0) comboTimer -= dt;
+
+  // Check each obstacle: if it just cleared the player, count a dodge
+  for (const o of obstacles) {
+    if (!o.dodged && o.x + o.w < CFG.PL_X) {
+      o.dodged = true;
+      combo++;
+      comboDisplay = combo;
+      comboTimer   = 1.4;
+    }
+  }
+}
+
+function drawCombo() {
+  if (comboDisplay < 2 || comboTimer <= 0) return;
+  const fade = Math.min(comboTimer / 0.4, 1);
+  ctx.save();
+  ctx.globalAlpha  = fade;
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'center';
+
+  const size = Math.round(H * 0.09);
+  ctx.font      = `900 ${size}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = comboDisplay >= 6 ? '#ff4dff'
+                : comboDisplay >= 4 ? '#ffcc00'
+                :                     '#63dcdc';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur  = 18;
+  ctx.fillText(`x${comboDisplay} COMBO`, W / 2, Math.round(H * 0.18));
+  ctx.restore();
+}
+
+/* ============================================================
    GAME STATE
    ============================================================ */
 let state     = 'idle';    // 'idle' | 'playing' | 'dead'
@@ -679,11 +746,13 @@ const DEATH_MSGS = {
 };
 
 function startGame() {
-  score   = 0;
-  speed   = CFG.SPEED_START;
-  elapsed = 0;
+  score      = 0;
+  speed      = CFG.SPEED_START;
+  elapsed    = 0;
+  flashAlpha = 0;
   resetObs();
   resetToasts();
+  resetCombo();
   player.reset();
   buildBg();
   setScreen('none');
@@ -694,6 +763,7 @@ function gameOver() {
   if (state !== 'playing') return;
   state = 'dead';
   snd('die');
+  triggerFlash('#ff2244', 0.5);
 
   // Find what killed the player
   const b = player.box(5);
@@ -749,6 +819,7 @@ function loop(ts) {
       localStorage.setItem('dash_best', bestScore);
     }
 
+    updateCombo(dt);
     checkToasts();
     if (collides()) { gameOver(); }
   }
@@ -798,7 +869,13 @@ function render() {
   player.draw(state === 'idle' ? Math.sin(bgT * 1.8) * 3 : 0);
 
   // HUD only while playing
-  if (state === 'playing') drawHUD();
+  if (state === 'playing') {
+    drawHUD();
+    drawCombo();
+  }
+
+  // Flash overlay (death = red, milestone = yellow)
+  drawFlash();
 
   // Subtle vignette darkens edges
   const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.12, W / 2, H / 2, W * 0.68);
