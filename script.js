@@ -187,6 +187,75 @@ class AudioSystem {
 
   // Combo sound for collecting multiple items quickly
   combo() { this._tone([660, 880, 1100, 1320], 'sine', 0.10, 0.22); }
+
+  // "Haaayyyydeeeeeee!!" — screamed collision shout
+  hayde() {
+    if (!this.ctx) return;
+    try {
+      const ac  = this.ctx;
+      const now = ac.currentTime;
+
+      // "H" — aspirated noise burst
+      const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.07), ac.sampleRate);
+      const nd   = nbuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      const nsrc = ac.createBufferSource();
+      nsrc.buffer = nbuf;
+      const nfilt = ac.createBiquadFilter();
+      nfilt.type = 'bandpass'; nfilt.frequency.value = 2200; nfilt.Q.value = 0.8;
+      const ngain = ac.createGain();
+      ngain.gain.setValueAtTime(0.18, now);
+      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
+      nsrc.start(now); nsrc.stop(now + 0.08);
+
+      // Voice oscillator (sawtooth = rich harmonics like a real voice)
+      const osc = ac.createOscillator();
+      osc.type = 'sawtooth';
+
+      // Pitch envelope: Haaay (ramps up) → d (brief dip) → eeeeee (soars up, funny)
+      osc.frequency.setValueAtTime(260, now + 0.05);
+      osc.frequency.linearRampToValueAtTime(310, now + 0.20);  // Haa
+      osc.frequency.linearRampToValueAtTime(350, now + 0.55);  // aayyy
+      osc.frequency.setValueAtTime(240, now + 0.65);           // d — percussive dip
+      osc.frequency.linearRampToValueAtTime(460, now + 0.78);  // ee — big leap
+      osc.frequency.linearRampToValueAtTime(620, now + 1.15);  // eeeee soaring up (comedy peak)
+      osc.frequency.linearRampToValueAtTime(480, now + 1.55);  // tail off
+
+      // Vibrato LFO (kicks in after "H" for wobbly vocal effect)
+      const lfo     = ac.createOscillator();
+      const lfoGain = ac.createGain();
+      lfo.type = 'sine'; lfo.frequency.value = 5.8;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfoGain.gain.setValueAtTime(0, now);
+      lfoGain.gain.linearRampToValueAtTime(22, now + 0.30);   // vibrato builds in
+      lfoGain.gain.linearRampToValueAtTime(30, now + 0.80);   // goes wild on "eeee"
+
+      // Formant filters to sculpt vowels (aa → ee transition)
+      const f1 = ac.createBiquadFilter();
+      f1.type = 'bandpass'; f1.Q.value = 4;
+      f1.frequency.setValueAtTime(780, now + 0.05);           // "aa" first formant
+      f1.frequency.linearRampToValueAtTime(300, now + 0.75);  // → "ee" first formant
+
+      const f2 = ac.createBiquadFilter();
+      f2.type = 'bandpass'; f2.Q.value = 7;
+      f2.frequency.setValueAtTime(1200, now + 0.05);          // "aa" second formant
+      f2.frequency.linearRampToValueAtTime(2500, now + 0.75); // → "ee" second formant
+
+      // Master gain envelope
+      const mg = ac.createGain();
+      mg.gain.setValueAtTime(0, now);
+      mg.gain.linearRampToValueAtTime(0.60, now + 0.08);      // snap attack
+      mg.gain.setValueAtTime(0.55, now + 0.62);
+      mg.gain.linearRampToValueAtTime(0.50, now + 1.10);
+      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
+
+      osc.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
+
+      lfo.start(now);       lfo.stop(now + 1.70);
+      osc.start(now + 0.05); osc.stop(now + 1.68);
+    } catch(_) {}
+  }
 }
 
 
@@ -1453,7 +1522,7 @@ class Game {
       }
       this.lastCollectTime = now;
     }
-    if (hit) { this._gameOver(); return; }
+    if (hit) { this.audio.hayde(); this._gameOver(); return; }
 
     // ── Sparks ──
     this._sparkAcc += dt;
