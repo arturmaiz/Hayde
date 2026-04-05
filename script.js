@@ -76,25 +76,32 @@ const CFG = {
 
   // Collectibles — Israeli supermarket staples
   ITEMS: [
-    '🥙','🧆','🫓','🫒','🥒','🍅','🥕','🍋','🍊','🍇','🍉','🌽',
+    '🥑','🥙','🧆','🫓','🫒','🥒','🍅','🥕','🍋','🍊','🍇','🍉','🌽',
     '🥚','🧀','🥛','🍞','🥖','🥐','🫘','🥜','🍯','🫙','🧃','🍎',
     '🍌','🍓','🥦','🥔','🧁','🍦','🥗','🥪','🍕','🥩','🍗','🍝',
-    '🫔','🌯','🥘','🍲','🧇','🥞','🍩','🍫','🍬','🍿','🥫','🫐'
+    '🫔','🌯','🥘','🍲','🧇','🥞','🍩','🍫','🍬','🍿','🥫','🫐',
+    '🧄','🌶️','🫑','🥬','🧅','🫚','🧈','🥝'
   ],
 
   // Hazard items (skulls only)
-  HAZARD_ITEMS: ['☠️','💀','☠️','💀','☠️','💀','☠️','💀','☠️','💀'],
+  HAZARD_ITEMS: ['☠️','☠️','☠️','💀','☠️','☠️','💀','☠️'],
+
+  // Israeli supermarket specials — bonus collectibles (1+1 deals, club cards, etc.)
+  SPECIAL_ITEMS: ['🏷️','⭐','🪙','💎','🎁','🎫'],
+  SCORE_SPECIAL: 60,    // bonus score for specials
+  NOS_SPECIAL:   40,    // NOS charge for specials
+  SPECIAL_CHANCE: 0.10, // 10% of collectibles are specials
 
   // Level visual themes — Israeli supermarket inspired
   LEVEL_THEMES: [
-    { name:'Shufersal',    sky1:'#0a0805', sky2:'#1a1408', grid:[255,180,50],  glow:[220,140,20],  nos:[255,200,0]  },
-    { name:'Rami Levy',    sky1:'#050a08', sky2:'#0a180e', grid:[40,200,100],  glow:[20,180,60],   nos:[60,255,120] },
-    { name:'Osher Ad',     sky1:'#08050a', sky2:'#140a1a', grid:[180,80,220],  glow:[140,40,200],  nos:[200,60,255] },
-    { name:'Yochananof',   sky1:'#0a0306', sky2:'#1a0610', grid:[255,60,100],  glow:[220,30,70],   nos:[255,80,120] },
-    { name:'Victory',      sky1:'#030608', sky2:'#061018', grid:[60,140,255],  glow:[30,100,220],  nos:[60,160,255] },
-    { name:'Mega',         sky1:'#0a0802', sky2:'#181204', grid:[255,160,30],  glow:[220,120,0],   nos:[255,180,0]  },
-    { name:'Tiv Taam',     sky1:'#020a0a', sky2:'#041818', grid:[0,220,200],   glow:[0,180,160],   nos:[0,255,220]  },
-    { name:'Machsanei Hashuk', sky1:'#0a0a02', sky2:'#18180a', grid:[200,200,60], glow:[160,160,20], nos:[220,220,0] },
+    { name:'Shufersal',          sky1:'#0a0805', sky2:'#1a1408', grid:[255,180,50],  glow:[220,140,20],  nos:[255,200,0],   flair:'stars'   },
+    { name:'Rami Levy',          sky1:'#050a08', sky2:'#0a180e', grid:[40,200,100],  glow:[20,180,60],   nos:[60,255,120],  flair:'dots'    },
+    { name:'Osher Ad',           sky1:'#08050a', sky2:'#140a1a', grid:[180,80,220],  glow:[140,40,200],  nos:[200,60,255],  flair:'aurora'  },
+    { name:'Yochananof',         sky1:'#0a0306', sky2:'#1a0610', grid:[255,60,100],  glow:[220,30,70],   nos:[255,80,120],  flair:'embers'  },
+    { name:'Victory',            sky1:'#030608', sky2:'#061018', grid:[60,140,255],  glow:[30,100,220],  nos:[60,160,255],  flair:'sparks'  },
+    { name:'Mega',               sky1:'#0a0802', sky2:'#181204', grid:[255,160,30],  glow:[220,120,0],   nos:[255,180,0],   flair:'rays'    },
+    { name:'Tiv Taam',           sky1:'#020a0a', sky2:'#041818', grid:[0,220,200],   glow:[0,180,160],   nos:[0,255,220],   flair:'bubbles' },
+    { name:'Machsanei Hashuk',   sky1:'#0a0a02', sky2:'#18180a', grid:[200,200,60],  glow:[160,160,20],  nos:[220,220,0],   flair:'flares'  },
   ],
 };
 
@@ -465,7 +472,7 @@ class Particle {
 class Particles {
   constructor() { this.list = []; }
 
-  sparks(x, y, count, speedMult = 1, colors = ['#ff9f0a','#ffd60a','#ff6b35']) {
+  sparks(x, y, count, speedMult = 1, colors = ['#ffffff','#d0d8e8','#a8b8cc']) {
     for (let i = 0; i < count; i++) {
       const angle = Math.PI + rnd(-0.45, 0.45);
       const speed = rnd(90, 260) * speedMult;
@@ -580,6 +587,15 @@ class Input {
 class Track {
   constructor() {
     this.floorT = 0; // scrolling floor offset
+    this._flairT = 0;
+    // Pre-generate star/dot positions for sky decorations
+    this._flairPts = Array.from({ length: 28 }, () => ({
+      x: Math.random(),
+      y: Math.random() * 0.9,
+      r: Math.random() * 1.8 + 0.5,
+      phase: Math.random() * TAU,
+      speed: Math.random() * 0.6 + 0.2,
+    }));
   }
 
   // Project (lane: -1|0|1, depth: 0-1) → screen {x, y, scale}
@@ -597,7 +613,7 @@ class Track {
     };
   }
 
-  draw(ctx, cw, ch, dt, speed, nosActive, theme) {
+  draw(ctx, cw, ch, dt, speed, nosActive, theme, level) {
     // Fall back to default Deep Space theme if none provided
     const th = theme || CFG.LEVEL_THEMES[0];
     const cx    = cw * 0.5;
@@ -606,12 +622,17 @@ class Track {
     const nearH = cw * CFG.NEAR_HALF;
     const farH  = cw * CFG.FAR_HALF;
 
+    this._flairT += dt;
+
     // ── Sky / ceiling ───────────────────────────────────────
     const skyGrad = ctx.createLinearGradient(0, 0, 0, vpY * 1.8);
     skyGrad.addColorStop(0, th.sky1);
     skyGrad.addColorStop(1, th.sky2);
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, cw, ch);
+
+    // ── Level-specific sky decorations ─────────────────────
+    this._drawSkyFlair(ctx, cw, ch, vpY, th, speed);
 
     // Ambient NOS glow in background
     if (nosActive) {
@@ -791,6 +812,140 @@ class Track {
     }
     ctx.restore();
   }
+
+  _drawSkyFlair(ctx, cw, ch, vpY, th, speed) {
+    if (!th.flair) return;
+    const t = this._flairT;
+    const [gr, gg, gb] = th.grid;
+    const [nr, ng, nb] = th.nos;
+
+    ctx.save();
+    // Clip to sky area
+    ctx.beginPath();
+    ctx.rect(0, 0, cw, vpY * 1.35);
+    ctx.clip();
+
+    switch (th.flair) {
+      case 'stars': {
+        // Twinkling stars
+        for (const p of this._flairPts) {
+          const bri = 0.4 + Math.sin(t * p.speed + p.phase) * 0.35;
+          ctx.globalAlpha = bri * 0.7;
+          ctx.fillStyle = `rgb(${gr},${gg},${gb})`;
+          ctx.beginPath();
+          ctx.arc(p.x * cw, p.y * vpY, p.r, 0, TAU);
+          ctx.fill();
+        }
+        break;
+      }
+      case 'dots': {
+        // Floating dots (fresh produce vibe)
+        for (const p of this._flairPts.slice(0, 18)) {
+          const fy = ((p.y + t * p.speed * 0.04) % 1) * vpY;
+          const bri = 0.3 + Math.sin(t * 1.2 + p.phase) * 0.2;
+          ctx.globalAlpha = bri * 0.55;
+          ctx.fillStyle = `rgb(${gr},${gg},${gb})`;
+          ctx.beginPath();
+          ctx.arc(p.x * cw, fy, p.r * 1.4, 0, TAU);
+          ctx.fill();
+        }
+        break;
+      }
+      case 'aurora': {
+        // Sweeping aurora bands
+        for (let i = 0; i < 3; i++) {
+          const y0 = vpY * (0.2 + i * 0.25 + Math.sin(t * 0.4 + i * 1.2) * 0.1);
+          const grad = ctx.createLinearGradient(0, y0, cw, y0 + 30);
+          grad.addColorStop(0,   `rgba(${nr},${ng},${nb},0)`);
+          grad.addColorStop(0.3, `rgba(${nr},${ng},${nb},0.09)`);
+          grad.addColorStop(0.7, `rgba(${gr},${gg},${gb},0.07)`);
+          grad.addColorStop(1,   `rgba(${nr},${ng},${nb},0)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, y0, cw, 30 + Math.sin(t * 0.5 + i) * 10);
+        }
+        break;
+      }
+      case 'embers': {
+        // Rising embers
+        for (const p of this._flairPts.slice(0, 20)) {
+          const fy = vpY * (1 - ((p.y + t * p.speed * 0.06) % 1));
+          const bri = 0.3 + Math.sin(t * 2 + p.phase) * 0.25;
+          ctx.globalAlpha = bri * 0.65;
+          ctx.fillStyle = `rgb(${gr},${gg},${gb})`;
+          ctx.beginPath();
+          ctx.arc(p.x * cw + Math.sin(t * p.speed + p.phase) * 8, fy, p.r * 0.9, 0, TAU);
+          ctx.fill();
+        }
+        break;
+      }
+      case 'sparks': {
+        // Sharp star sparks
+        for (const p of this._flairPts.slice(0, 16)) {
+          const bri = Math.max(0, Math.sin(t * p.speed * 3 + p.phase));
+          ctx.globalAlpha = bri * 0.7;
+          const sx = p.x * cw;
+          const sy = p.y * vpY;
+          const sr = p.r * 2;
+          ctx.strokeStyle = `rgb(${nr},${ng},${nb})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx - sr, sy); ctx.lineTo(sx + sr, sy);
+          ctx.moveTo(sx, sy - sr); ctx.lineTo(sx, sy + sr);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'rays': {
+        // Sunray/neon rays from vanishing point
+        const cx2 = cw * 0.5;
+        for (let i = 0; i < 10; i++) {
+          const angle = (i / 10) * Math.PI - Math.PI * 0.5 + Math.sin(t * 0.25 + i * 0.6) * 0.06;
+          const len   = cw * 0.7;
+          const bri   = 0.04 + Math.sin(t * 0.5 + i) * 0.02;
+          ctx.globalAlpha = bri;
+          ctx.strokeStyle = `rgb(${gr},${gg},${gb})`;
+          ctx.lineWidth   = 4 + Math.sin(t + i) * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx2, vpY * 0.5);
+          ctx.lineTo(cx2 + Math.cos(angle) * len, vpY * 0.5 + Math.sin(angle) * len * 0.6);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'bubbles': {
+        // Floating translucent bubbles
+        for (const p of this._flairPts.slice(0, 14)) {
+          const fy = vpY * (1 - ((p.y + t * p.speed * 0.05) % 1));
+          const bri = 0.15 + Math.sin(t * p.speed + p.phase) * 0.1;
+          ctx.globalAlpha = bri;
+          ctx.strokeStyle = `rgb(${nr},${ng},${nb})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(p.x * cw, fy, p.r * 3.5, 0, TAU);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'flares': {
+        // Lens flare glints
+        for (const p of this._flairPts.slice(0, 12)) {
+          const bri = Math.max(0, Math.sin(t * p.speed * 1.5 + p.phase)) * 0.5;
+          if (bri < 0.05) continue;
+          ctx.globalAlpha = bri;
+          const fx = p.x * cw;
+          const fy = p.y * vpY;
+          const g  = ctx.createRadialGradient(fx, fy, 0, fx, fy, p.r * 8);
+          g.addColorStop(0,   `rgb(${gr},${gg},${gb})`);
+          g.addColorStop(1,   'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(fx, fy, p.r * 8, 0, TAU); ctx.fill();
+        }
+        break;
+      }
+    }
+
+    ctx.restore();
+  }
 }
 
 
@@ -862,15 +1017,11 @@ class Player {
   jumpHeight(ch) { return this.jumpT * CFG.JUMP_PEAK * ch; }
 
   draw(ctx, track, cw, ch) {
-    const pos   = track.project(this.laneT, CFG.PLAYER_D, cw, ch);
-    const bH    = ch * 0.115;
-    const bW    = bH * 0.88;
-    const slideScale = this.sliding ? 0.52 : 1;
-    const cartH = bH * slideScale;
-    const cartW = bW;
-    const offY  = this.jumpHeight(ch);
-    const x     = pos.x;
-    const y     = pos.y - offY;
+    const pos  = track.project(this.laneT, CFG.PLAYER_D, cw, ch);
+    const bH   = ch * 0.115;
+    const offY = this.jumpHeight(ch);
+    const x    = pos.x;
+    const y    = pos.y - offY;
 
     ctx.save();
     ctx.translate(x, y);
@@ -879,205 +1030,33 @@ class Player {
     const lean = this.laneVel * 0.18;
     ctx.rotate(lean);
 
-    // Squash on landing
-    const squash = this.jumping ? 1 : (this.sliding ? 0.55 : 1);
-
-    // Death shake
+    // Death shake + fade
     if (this.dead && this.deathAge < 0.5) {
       const shake = (1 - this.deathAge * 2) * 7;
       ctx.translate(rnd(-shake, shake), rnd(-shake, shake));
       ctx.globalAlpha = Math.max(0.15, 1 - this.deathAge * 1.6);
     }
 
-    this._drawCart(ctx, cartW, cartH, squash);
-    ctx.restore();
-  }
-
-  _drawCart(ctx, w, h, squash) {
-    const hw = w * 0.5;
-    const hh = h * 0.5;
-
     // Ground shadow
     ctx.save();
-    ctx.globalAlpha = 0.25;
     ctx.beginPath();
-    ctx.ellipse(0, hh + h * 0.13, w * 0.52, h * 0.08, 0, 0, TAU);
-    const sh = ctx.createRadialGradient(0, hh + h * 0.13, 0, 0, hh + h * 0.13, w * 0.52);
-    sh.addColorStop(0, 'rgba(0,0,0,0.55)');
+    ctx.ellipse(0, bH * 0.1, bH * 0.52, bH * 0.075, 0, 0, TAU);
+    const sh = ctx.createRadialGradient(0, bH * 0.1, 0, 0, bH * 0.1, bH * 0.52);
+    sh.addColorStop(0, 'rgba(0,0,0,0.50)');
     sh.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = sh;
     ctx.fill();
     ctx.restore();
 
-    // ── Basket (wire frame style) ─────────────────────────
-    const bTop  = -hh * squash;
-    const bBot  = hh * squash * 0.55;
-    const bLeft = -hw * 0.88;
-    const bRgt  =  hw * 0.88;
-    const bW    = bRgt - bLeft;
-    const bH    = bBot - bTop;
+    // 🛒 cart emoji
+    const emojiSize = bH * (this.sliding ? 1.1 : 1.75);
+    ctx.font = `${emojiSize}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Squash vertically when sliding
+    if (this.sliding) ctx.scale(1, 0.55);
+    ctx.fillText('🛒', 0, -bH * 0.32);
 
-    // Basket fill (subtle tinted)
-    ctx.beginPath();
-    ctx.roundRect(bLeft, bTop, bW, bH, [5, 5, 3, 3]);
-    const basketGrad = ctx.createLinearGradient(bLeft, bTop, bRgt, bBot);
-    basketGrad.addColorStop(0, 'rgba(160,175,200,0.18)');
-    basketGrad.addColorStop(0.5, 'rgba(140,155,185,0.12)');
-    basketGrad.addColorStop(1, 'rgba(100,115,145,0.10)');
-    ctx.fillStyle = basketGrad;
-    ctx.fill();
-
-    // Wire horizontal bars
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(bLeft, bTop, bW, bH, [5, 5, 3, 3]);
-    ctx.clip();
-    const wireColor = 'rgba(180,195,220,0.55)';
-    const wireW = Math.max(0.8, w * 0.018);
-    ctx.strokeStyle = wireColor;
-    ctx.lineWidth = wireW;
-    const hBars = 4;
-    for (let i = 0; i <= hBars; i++) {
-      const wy = bTop + (bH * i / hBars);
-      ctx.beginPath(); ctx.moveTo(bLeft, wy); ctx.lineTo(bRgt, wy); ctx.stroke();
-    }
-    const vBars = 5;
-    for (let i = 0; i <= vBars; i++) {
-      const vx = bLeft + (bW * i / vBars);
-      ctx.beginPath(); ctx.moveTo(vx, bTop); ctx.lineTo(vx, bBot); ctx.stroke();
-    }
-    ctx.restore();
-
-    // Basket border frame
-    ctx.beginPath();
-    ctx.roundRect(bLeft, bTop, bW, bH, [5, 5, 3, 3]);
-    ctx.strokeStyle = 'rgba(200,215,240,0.80)';
-    ctx.lineWidth = Math.max(1.2, w * 0.025);
-    ctx.stroke();
-
-    // Items inside basket
-    if (this.collected && this.collected.length > 0) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(bLeft + 2, bTop + 2, bW - 4, bH - 4, 3);
-      ctx.clip();
-      const show = Math.min(this.collected.length, 3);
-      const sz   = Math.min(w * 0.28, 14);
-      for (let i = 0; i < show; i++) {
-        ctx.font = `${sz}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const ix = bLeft + bW * 0.18 + i * bW * 0.29;
-        ctx.fillText(this.collected[this.collected.length - 1 - i], ix, bTop + bH * 0.42);
-      }
-      ctx.restore();
-    }
-
-    // ── Handle bar ────────────────────────────────────────
-    const hbY  = bTop - h * 0.095;
-    const hbH  = h * 0.085;
-    // Handle support posts
-    ctx.strokeStyle = 'rgba(190,205,230,0.75)';
-    ctx.lineWidth = Math.max(1, w * 0.022);
-    [-hw * 0.55, hw * 0.55].forEach(px => {
-      ctx.beginPath();
-      ctx.moveTo(px, bTop);
-      ctx.lineTo(px, hbY + hbH * 0.5);
-      ctx.stroke();
-    });
-    // Handle bar grip
-    const hbGrad = ctx.createLinearGradient(-hw * 0.6, hbY, -hw * 0.6, hbY + hbH);
-    hbGrad.addColorStop(0, '#c8cfe0');
-    hbGrad.addColorStop(0.4, '#e8ecf5');
-    hbGrad.addColorStop(1, '#8890a8');
-    ctx.beginPath();
-    ctx.roundRect(-hw * 0.62, hbY, w * 0.62, hbH, 5);
-    ctx.fillStyle = hbGrad;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(220,230,255,0.55)';
-    ctx.lineWidth = Math.max(0.8, w * 0.015);
-    ctx.stroke();
-
-    // ── Bottom frame / chassis ────────────────────────────
-    const chasY = bBot;
-    const chasH = h * 0.125;
-    ctx.beginPath();
-    ctx.roundRect(bLeft * 0.75, chasY, bW * 0.75, chasH, [0, 0, 3, 3]);
-    const chasGrad = ctx.createLinearGradient(0, chasY, 0, chasY + chasH);
-    chasGrad.addColorStop(0, '#6a7090');
-    chasGrad.addColorStop(1, '#3a3e58');
-    ctx.fillStyle = chasGrad;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(160,170,200,0.45)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Accent glow stripe
-    ctx.save();
-    ctx.globalAlpha = 0.45;
-    const acG = ctx.createLinearGradient(bLeft, 0, bRgt, 0);
-    acG.addColorStop(0,   'rgba(0,113,227,0)');
-    acG.addColorStop(0.35,'rgba(0,150,255,0.7)');
-    acG.addColorStop(0.65,'rgba(0,150,255,0.7)');
-    acG.addColorStop(1,   'rgba(0,113,227,0)');
-    ctx.fillStyle = acG;
-    ctx.fillRect(bLeft, bBot - h * 0.02, bW, h * 0.025);
-    ctx.restore();
-
-    // ── Wheels ────────────────────────────────────────────
-    const wheelR = h * 0.105 * squash;
-    const wheelY = chasY + chasH + wheelR * 0.55;
-    [-hw * 0.52, hw * 0.52].forEach(wx => {
-      // Shadow
-      ctx.beginPath();
-      ctx.ellipse(wx, wheelY + wheelR * 0.25, wheelR * 0.78, wheelR * 0.22, 0, 0, TAU);
-      ctx.fillStyle = 'rgba(0,0,0,0.30)';
-      ctx.fill();
-
-      // Tire outer
-      const tireG = ctx.createRadialGradient(wx - wheelR * 0.2, wheelY - wheelR * 0.2, 0, wx, wheelY, wheelR);
-      tireG.addColorStop(0, '#3a3e58');
-      tireG.addColorStop(0.7, '#1e2030');
-      tireG.addColorStop(1, '#0e1018');
-      ctx.beginPath(); ctx.arc(wx, wheelY, wheelR, 0, TAU);
-      ctx.fillStyle = tireG; ctx.fill();
-
-      // Tire rim
-      ctx.beginPath(); ctx.arc(wx, wheelY, wheelR, 0, TAU);
-      ctx.strokeStyle = 'rgba(100,115,145,0.65)';
-      ctx.lineWidth = Math.max(1, wheelR * 0.12);
-      ctx.stroke();
-
-      // Hub cap
-      const hubR = wheelR * 0.38;
-      const hubG = ctx.createRadialGradient(wx - hubR * 0.25, wheelY - hubR * 0.25, 0, wx, wheelY, hubR);
-      hubG.addColorStop(0, '#c0c8e0');
-      hubG.addColorStop(1, '#6870a0');
-      ctx.beginPath(); ctx.arc(wx, wheelY, hubR, 0, TAU);
-      ctx.fillStyle = hubG; ctx.fill();
-
-      // Spoke marks
-      ctx.strokeStyle = 'rgba(80,90,120,0.60)';
-      ctx.lineWidth = Math.max(0.5, wheelR * 0.065);
-      for (let s = 0; s < 4; s++) {
-        const a = (s / 4) * TAU;
-        ctx.beginPath();
-        ctx.moveTo(wx + Math.cos(a) * hubR * 0.9, wheelY + Math.sin(a) * hubR * 0.9);
-        ctx.lineTo(wx + Math.cos(a) * wheelR * 0.78, wheelY + Math.sin(a) * wheelR * 0.78);
-        ctx.stroke();
-      }
-    });
-
-    // ── Top glass sheen ───────────────────────────────────
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(bLeft, bTop, bW, bH * 0.4, [5, 5, 0, 0]);
-    ctx.clip();
-    const sheen = ctx.createLinearGradient(bLeft, bTop, bRgt * 0.4, bTop + bH * 0.35);
-    sheen.addColorStop(0, 'rgba(255,255,255,0.16)');
-    sheen.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = sheen;
-    ctx.fillRect(bLeft, bTop, bW, bH * 0.4);
     ctx.restore();
   }
 
@@ -1129,48 +1108,49 @@ class GameObject {
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.scale(pulse, pulse);
-    this.type === 'collect'
-      ? this._drawCollectible(ctx, size)
-      : this._drawHazard(ctx, size);
+    if (this.type === 'special')   this._drawSpecial(ctx, size);
+    else if (this.type === 'collect') this._drawCollectible(ctx, size);
+    else                           this._drawHazard(ctx, size);
     ctx.restore();
   }
 
   _drawCollectible(ctx, size) {
-    const r = size * 0.5;
-
-    // Soft glow behind emoji
-    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.2);
-    glow.addColorStop(0, 'rgba(255,255,255,0.12)');
-    glow.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
-
-    // Just the food emoji — no ring, no circle
-    const emojiSize = Math.max(12, r * 1.5);
+    const emojiSize = Math.max(12, size * 0.75);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.emoji, 0, r * 0.06);
+    ctx.fillText(this.emoji, 0, 0);
   }
 
   _drawHazard(ctx, size) {
-    const r   = size * 0.5;
-    const flk = 0.6 + Math.sin(this.age * 5) * 0.18;
-
-    // Subtle red danger glow behind skull
-    const aura = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.4);
-    aura.addColorStop(0, `rgba(255,59,48,${flk * 0.18})`);
-    aura.addColorStop(0.6, `rgba(255,59,48,${flk * 0.06})`);
-    aura.addColorStop(1, 'rgba(255,59,48,0)');
-    ctx.fillStyle = aura;
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.4, 0, TAU); ctx.fill();
-
-    // Just the skull emoji — no ring, no circle, no badge
-    const emojiSize = Math.max(12, r * 1.5);
+    const emojiSize = Math.max(12, size * 0.75);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.emoji, 0, r * 0.06);
+    ctx.fillText(this.emoji, 0, 0);
+  }
+
+  _drawSpecial(ctx, size) {
+    // Spinning golden halo — no tint, just the emoji at full opacity
+    const r = size * 0.52;
+    const spins = (this.age * 2) % TAU;
+    ctx.save();
+    ctx.rotate(spins);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * TAU;
+      const gx = Math.cos(a) * r * 0.72;
+      const gy = Math.sin(a) * r * 0.72;
+      ctx.fillStyle = '#ffd60a';
+      ctx.beginPath();
+      ctx.arc(gx, gy, r * 0.10, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    const emojiSize = Math.max(12, size * 0.80);
+    ctx.font = `${emojiSize}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.emoji, 0, 0);
   }
 
   getBox(track, cw, ch) {
@@ -1205,26 +1185,38 @@ class ObjectManager {
     this.items = this.items.filter(o => !o.dead);
   }
 
+  _pickCollectible() {
+    if (Math.random() < CFG.SPECIAL_CHANCE) {
+      return { emoji: CFG.SPECIAL_ITEMS[rndInt(0, CFG.SPECIAL_ITEMS.length - 1)], type: 'special' };
+    }
+    return { emoji: CFG.ITEMS[rndInt(0, CFG.ITEMS.length - 1)], type: 'collect' };
+  }
+
   _spawn(hazRatio) {
     const lane  = rndInt(-1, 1);
     const isHaz = Math.random() < hazRatio;
-    const emoji = isHaz
-      ? CFG.HAZARD_ITEMS[rndInt(0, CFG.HAZARD_ITEMS.length - 1)]
-      : CFG.ITEMS[rndInt(0, CFG.ITEMS.length - 1)];
-    this.items.push(new GameObject(isHaz ? 'hazard' : 'collect', lane, emoji));
+    let emoji, type;
+    if (isHaz) {
+      emoji = CFG.HAZARD_ITEMS[rndInt(0, CFG.HAZARD_ITEMS.length - 1)];
+      type  = 'hazard';
+    } else {
+      ({ emoji, type } = this._pickCollectible());
+    }
+    this.items.push(new GameObject(type, lane, emoji));
 
     // Sometimes add a second object in a different lane
     if (Math.random() < 0.28) {
       const lanes2 = [-1, 0, 1].filter(l => l !== lane);
       const lane2  = lanes2[rndInt(0, lanes2.length - 1)];
       const isHaz2 = Math.random() < hazRatio * 0.75;
-      this.items.push(new GameObject(
-        isHaz2 ? 'hazard' : 'collect',
-        lane2,
-        isHaz2
-          ? CFG.HAZARD_ITEMS[rndInt(0, CFG.HAZARD_ITEMS.length - 1)]
-          : CFG.ITEMS[rndInt(0, CFG.ITEMS.length - 1)]
-      ));
+      let emoji2, type2;
+      if (isHaz2) {
+        emoji2 = CFG.HAZARD_ITEMS[rndInt(0, CFG.HAZARD_ITEMS.length - 1)];
+        type2  = 'hazard';
+      } else {
+        ({ emoji: emoji2, type: type2 } = this._pickCollectible());
+      }
+      this.items.push(new GameObject(type2, lane2, emoji2));
     }
   }
 
@@ -1239,10 +1231,10 @@ class ObjectManager {
       const oBox = obj.getBox(track, cw, ch);
       if (!this._overlap(pBox, oBox)) continue;
 
-      if (obj.type === 'collect') {
+      if (obj.type === 'collect' || obj.type === 'special') {
         obj.taken = true;
         obj.dead  = true;
-        result.collected.push(obj.emoji);
+        result.collected.push({ emoji: obj.emoji, special: obj.type === 'special' });
       } else {
         // Can jump over ground-level hazards
         if (!player.jumping || player.jumpT < 0.35) {
@@ -1627,13 +1619,23 @@ class Game {
 
     // ── Collisions ──
     const { collected, hit } = this.objects.checkCollisions(this.player, this.track, this.cw, this.ch);
-    for (const emoji of collected) {
+    for (const item of collected) {
+      const { emoji, special } = item;
       const pos = this.track.project(this.player.laneT, CFG.PLAYER_D, this.cw, this.ch);
       this.particles.collectPop(pos.x, pos.y - this.ch * 0.07, emoji);
       this.player.collect(emoji);
-      this.score    += CFG.SCORE_ITEM;
-      this.nosCharge = clamp(this.nosCharge + CFG.NOS_CHARGE, 0, CFG.NOS_MAX);
-      this.audio.haydeCollect();
+
+      if (special) {
+        this.score    += CFG.SCORE_SPECIAL;
+        this.nosCharge = clamp(this.nosCharge + CFG.NOS_SPECIAL, 0, CFG.NOS_MAX);
+        const theme = this._getTheme();
+        this.toast.show(`מבצע! ${emoji} +${CFG.SCORE_SPECIAL} pts ⭐`, 1200);
+        this.audio.levelUp();
+      } else {
+        this.score    += CFG.SCORE_ITEM;
+        this.nosCharge = clamp(this.nosCharge + CFG.NOS_CHARGE, 0, CFG.NOS_MAX);
+        this.audio.haydeCollect();
+      }
 
       // Combo tracking: 3+ items within 2 seconds
       const now = this.elapsed;
@@ -1668,7 +1670,7 @@ class Game {
         const nosHex = `#${tnr.toString(16).padStart(2,'0')}${tng.toString(16).padStart(2,'0')}${tnb.toString(16).padStart(2,'0')}`;
         const cols = this.nosActive
           ? [nosHex, '#bf5af2', '#ffffff', `rgb(${tnr},${tng},${tnb})`]
-          : ['#ff9f0a','#ffd60a','#ff6b35','#ffcc02'];
+          : ['#ffffff', '#d8e0f0', '#b0c0d8', '#e8ecf8'];
         this.particles.sparks(sx, sy, cnt, this.nosActive ? 1.4 : 1, cols);
       }
       if (this.nosActive) this.particles.nosTrail(sx, sy - cartH * 0.5);
@@ -1701,7 +1703,7 @@ class Game {
       : 0.06; // slow on gameover
 
     const theme = this._getTheme();
-    this.track.draw(ctx, cw, ch, dt, trackSpeed, this.nosActive && this.state === 'PLAYING', theme);
+    this.track.draw(ctx, cw, ch, dt, trackSpeed, this.nosActive && this.state === 'PLAYING', theme, this.level);
 
     if (this.state === 'MENU') {
       this._renderMenuIdle(ctx, cw, ch);
@@ -1732,17 +1734,18 @@ class Game {
   }
 
   _renderMenuIdle(ctx, cw, ch) {
-    // Subtle animated idle cart in the distance
+    // Animated idle cart in the distance
     const t  = this._idleT;
     const cx = cw * 0.5;
-    const cy = ch * 0.62 + Math.sin(t * 1.4) * 6;
+    const cy = ch * 0.60 + Math.sin(t * 1.4) * 8;
 
     ctx.save();
-    ctx.globalAlpha = 0.13;
+    ctx.globalAlpha = 0.22;
     ctx.translate(cx, cy);
-    ctx.scale(3.2, 3.2);
-    const tempPlayer = { collected: [], sliding: false, dead: false, deathAge: 0, laneVel: 0, jumpT: 0 };
-    Player.prototype._drawCart.call(tempPlayer, ctx, 42, 48, 1);
+    ctx.font = `${Math.min(cw * 0.25, ch * 0.12)}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🛒', 0, 0);
     ctx.restore();
   }
 }
