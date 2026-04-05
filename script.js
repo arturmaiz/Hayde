@@ -92,16 +92,20 @@ const CFG = {
   NOS_SPECIAL:   40,    // NOS charge for specials
   SPECIAL_CHANCE: 0.10, // 10% of collectibles are specials
 
-  // Level visual themes — Israeli supermarket inspired
+  // Level visual themes — Israeli supermarket inspired (vibrant & distinct)
   LEVEL_THEMES: [
-    { name:'Shufersal',          sky1:'#0a0805', sky2:'#1a1408', grid:[255,180,50],  glow:[220,140,20],  nos:[255,200,0],   flair:'stars'   },
-    { name:'Rami Levy',          sky1:'#050a08', sky2:'#0a180e', grid:[40,200,100],  glow:[20,180,60],   nos:[60,255,120],  flair:'dots'    },
-    { name:'Osher Ad',           sky1:'#08050a', sky2:'#140a1a', grid:[180,80,220],  glow:[140,40,200],  nos:[200,60,255],  flair:'aurora'  },
-    { name:'Yochananof',         sky1:'#0a0306', sky2:'#1a0610', grid:[255,60,100],  glow:[220,30,70],   nos:[255,80,120],  flair:'embers'  },
-    { name:'Victory',            sky1:'#030608', sky2:'#061018', grid:[60,140,255],  glow:[30,100,220],  nos:[60,160,255],  flair:'sparks'  },
-    { name:'Mega',               sky1:'#0a0802', sky2:'#181204', grid:[255,160,30],  glow:[220,120,0],   nos:[255,180,0],   flair:'rays'    },
-    { name:'Tiv Taam',           sky1:'#020a0a', sky2:'#041818', grid:[0,220,200],   glow:[0,180,160],   nos:[0,255,220],   flair:'bubbles' },
-    { name:'Machsanei Hashuk',   sky1:'#0a0a02', sky2:'#18180a', grid:[200,200,60],  glow:[160,160,20],  nos:[220,220,0],   flair:'flares'  },
+    { name:'Shufersal',          sky1:'#0f0a02', sky2:'#2a1c08', grid:[255,200,60],  glow:[255,160,30],  nos:[255,220,0],   flair:'stars',   track1:'#14100a', track2:'#1e1808' },
+    { name:'Rami Levy',          sky1:'#021208', sky2:'#083018', grid:[50,255,120],   glow:[30,220,80],   nos:[80,255,140],  flair:'dots',    track1:'#081408', track2:'#0c200c' },
+    { name:'Osher Ad',           sky1:'#10041a', sky2:'#220a38', grid:[200,100,255],  glow:[160,60,240],  nos:[220,80,255],  flair:'aurora',  track1:'#120a18', track2:'#1a0e28' },
+    { name:'Yochananof',         sky1:'#140410', sky2:'#2a0818', grid:[255,70,120],   glow:[240,40,80],   nos:[255,100,140], flair:'embers',  track1:'#140808', track2:'#200c0c' },
+    { name:'Victory',            sky1:'#020814', sky2:'#061228', grid:[80,160,255],   glow:[40,120,240],  nos:[80,180,255],  flair:'sparks',  track1:'#080c18', track2:'#0c1028' },
+    { name:'Mega',               sky1:'#140c02', sky2:'#281808', grid:[255,180,40],   glow:[240,140,0],   nos:[255,200,20],  flair:'rays',    track1:'#161008', track2:'#22180c' },
+    { name:'Tiv Taam',           sky1:'#021414', sky2:'#043030', grid:[0,240,220],    glow:[0,200,180],   nos:[0,255,240],   flair:'bubbles', track1:'#081414', track2:'#0c2020' },
+    { name:'Machsanei Hashuk',   sky1:'#121202', sky2:'#282808', grid:[220,220,80],   glow:[180,180,30],  nos:[240,240,0],   flair:'flares',  track1:'#141408', track2:'#20200c' },
+    { name:'Shuk HaCarmel',      sky1:'#140804', sky2:'#301408', grid:[255,120,60],   glow:[240,80,30],   nos:[255,140,80],  flair:'embers',  track1:'#181008', track2:'#28180c' },
+    { name:'AM:PM',              sky1:'#04080f', sky2:'#081020', grid:[100,200,255],  glow:[60,160,240],  nos:[120,220,255], flair:'stars',   track1:'#060c14', track2:'#0a1020' },
+    { name:'Super-Pharm',        sky1:'#080214', sky2:'#140430', grid:[160,80,255],   glow:[120,40,220],  nos:[180,100,255], flair:'aurora',  track1:'#0c0818', track2:'#140c28' },
+    { name:'Yellow',             sky1:'#14140a', sky2:'#2a2a10', grid:[255,255,100],  glow:[220,220,40],  nos:[255,255,60],  flair:'flares',  track1:'#141408', track2:'#22220c' },
   ],
 };
 
@@ -160,13 +164,55 @@ class AudioSystem {
 
   slide() { this._tone([200, 160, 120], 'sawtooth', 0.18, 0.15); }
 
-  // Motivational fanfare - plays at score milestones
+  // Motivational fanfare + spoken phrase in varied voices
   motivate(level) {
+    // Spoken motivation in different voices
+    const phrases = [
+      'Yalla habibi!', 'Keep going!', 'You are amazing!', 'Sababa!',
+      'Kol hakavod!', 'What a legend!', 'Faster faster!', 'Ma kore achi!',
+      'Incredible!', 'You are on fire!', 'Supermarket champion!', 'Beast mode!',
+      'Unbelievable!', 'So fast!', 'Cannot stop you!', 'Level up baby!',
+      'Mashallah!', 'Walla walla!', 'Achi sheli!', 'You rock!',
+    ];
+    const phrase = phrases[rndInt(0, phrases.length - 1)];
+
+    // Use different pitch/rate for each level to simulate varied voices
+    try {
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance(phrase);
+        // Vary voice characteristics dramatically
+        const voiceStyles = [
+          { rate: 1.0, pitch: 0.5 },   // deep male
+          { rate: 1.3, pitch: 1.8 },   // high female
+          { rate: 0.9, pitch: 0.3 },   // very deep
+          { rate: 1.5, pitch: 1.5 },   // fast excited
+          { rate: 0.8, pitch: 1.0 },   // slow dramatic
+          { rate: 1.2, pitch: 2.0 },   // squeaky
+          { rate: 1.1, pitch: 0.7 },   // medium male
+          { rate: 1.4, pitch: 1.2 },   // energetic
+        ];
+        const style = voiceStyles[level % voiceStyles.length];
+        u.rate   = style.rate;
+        u.pitch  = style.pitch;
+        u.volume = 1.0;
+        const voices = speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          // Pick a different voice for each level
+          u.voice = voices[level % voices.length];
+        }
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      }
+    } catch(_) {}
+
+    // Also play fanfare chime
     if (!this.ctx) return;
     const seqs = [
       [262, 330, 392, 523, 659, 784],
       [294, 370, 440, 587, 740, 880],
       [330, 415, 494, 659, 831, 988],
+      [349, 440, 523, 698, 880, 1047],
+      [392, 494, 587, 784, 988, 1175],
     ];
     const seq = seqs[level % seqs.length];
     seq.forEach((f, i) => {
@@ -178,7 +224,7 @@ class AudioSystem {
         osc.type = 'sine';
         const t = this.ctx.currentTime + i * 0.09;
         osc.frequency.setValueAtTime(f, t);
-        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.setValueAtTime(0.18, t);
         gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
         osc.start(t);
         osc.stop(t + 0.26);
@@ -195,8 +241,33 @@ class AudioSystem {
   // Combo sound for collecting multiple items quickly
   combo() { this._tone([660, 880, 1100, 1320], 'sine', 0.10, 0.22); }
 
-  // "Haaayyyydeeeeeee!!" — screamed collision shout
+  // "Haaayyyydeeeeeee!!" — clear spoken collision shout (SpeechSynthesis + synth fallback)
   hayde() {
+    // Try SpeechSynthesis for a clear human voice
+    this._speakHayde('Haaaaydeee!', 1.3, 1.0);
+    // Also play synth undertone for impact
+    this._haydesynth();
+  }
+
+  // Speak text using SpeechSynthesis API with varied voice
+  _speakHayde(text, rate = 1.0, pitch = 1.0) {
+    try {
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate   = rate;
+      u.pitch  = pitch;
+      u.volume = 1.0;
+      // Pick a random available voice for variety
+      const voices = speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        u.voice = voices[rndInt(0, voices.length - 1)];
+      }
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch(_) {}
+  }
+
+  _haydesynth() {
     if (!this.ctx) return;
     try {
       const ac  = this.ctx;
@@ -211,215 +282,75 @@ class AudioSystem {
       const nfilt = ac.createBiquadFilter();
       nfilt.type = 'bandpass'; nfilt.frequency.value = 2200; nfilt.Q.value = 0.8;
       const ngain = ac.createGain();
-      ngain.gain.setValueAtTime(0.18, now);
+      ngain.gain.setValueAtTime(0.12, now);
       ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
       nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
       nsrc.start(now); nsrc.stop(now + 0.08);
 
-      // Voice oscillator (sawtooth = rich harmonics like a real voice)
+      // Subtle synth undertone (lower volume, speech is primary)
       const osc = ac.createOscillator();
       osc.type = 'sawtooth';
-
-      // Pitch envelope: Haaay (ramps up) → d (brief dip) → eeeeee (soars up, funny)
       osc.frequency.setValueAtTime(260, now + 0.05);
-      osc.frequency.linearRampToValueAtTime(310, now + 0.20);  // Haa
-      osc.frequency.linearRampToValueAtTime(350, now + 0.55);  // aayyy
-      osc.frequency.setValueAtTime(240, now + 0.65);           // d — percussive dip
-      osc.frequency.linearRampToValueAtTime(460, now + 0.78);  // ee — big leap
-      osc.frequency.linearRampToValueAtTime(620, now + 1.15);  // eeeee soaring up (comedy peak)
-      osc.frequency.linearRampToValueAtTime(480, now + 1.55);  // tail off
+      osc.frequency.linearRampToValueAtTime(350, now + 0.55);
+      osc.frequency.setValueAtTime(240, now + 0.65);
+      osc.frequency.linearRampToValueAtTime(460, now + 0.78);
+      osc.frequency.linearRampToValueAtTime(480, now + 1.15);
 
-      // Vibrato LFO (kicks in after "H" for wobbly vocal effect)
-      const lfo     = ac.createOscillator();
-      const lfoGain = ac.createGain();
-      lfo.type = 'sine'; lfo.frequency.value = 5.8;
-      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
-      lfoGain.gain.setValueAtTime(0, now);
-      lfoGain.gain.linearRampToValueAtTime(22, now + 0.30);   // vibrato builds in
-      lfoGain.gain.linearRampToValueAtTime(30, now + 0.80);   // goes wild on "eeee"
-
-      // Formant filters to sculpt vowels (aa → ee transition)
       const f1 = ac.createBiquadFilter();
       f1.type = 'bandpass'; f1.Q.value = 4;
-      f1.frequency.setValueAtTime(780, now + 0.05);           // "aa" first formant
-      f1.frequency.linearRampToValueAtTime(300, now + 0.75);  // → "ee" first formant
+      f1.frequency.setValueAtTime(780, now + 0.05);
+      f1.frequency.linearRampToValueAtTime(300, now + 0.75);
 
-      const f2 = ac.createBiquadFilter();
-      f2.type = 'bandpass'; f2.Q.value = 7;
-      f2.frequency.setValueAtTime(1200, now + 0.05);          // "aa" second formant
-      f2.frequency.linearRampToValueAtTime(2500, now + 0.75); // → "ee" second formant
-
-      // Master gain envelope
       const mg = ac.createGain();
       mg.gain.setValueAtTime(0, now);
-      mg.gain.linearRampToValueAtTime(0.60, now + 0.08);      // snap attack
-      mg.gain.setValueAtTime(0.55, now + 0.62);
-      mg.gain.linearRampToValueAtTime(0.50, now + 1.10);
-      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
+      mg.gain.linearRampToValueAtTime(0.18, now + 0.08);
+      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.20);
 
-      osc.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
-
-      lfo.start(now);       lfo.stop(now + 1.70);
-      osc.start(now + 0.05); osc.stop(now + 1.68);
+      osc.connect(f1); f1.connect(mg); mg.connect(ac.destination);
+      osc.start(now + 0.05); osc.stop(now + 1.22);
     } catch(_) {}
   }
 
-  // Quick mini "Hayde!" on item collect — short, punchy, cheerful
+  // Quick mini "Hayde!" on item collect — clear spoken voice
   haydeCollect() {
+    this._speakHayde('Hayde!', 1.6, rnd(0.8, 1.4));
+    // Quick cheerful chime
+    this._tone([660, 880], 'sine', 0.10, 0.12);
+  }
+
+  // Combo sounds — escalating excitement per combo level
+  comboSound(level) {
+    const phrases = [
+      'Yalla!', 'Sababa!', 'Combo!', 'Amazing!', 'Incredible!',
+      'On fire!', 'Legendary!', 'Unstoppable!', 'HAYDE HAYDE HAYDE!'
+    ];
+    const idx = Math.min(level - 1, phrases.length - 1);
+    this._speakHayde(phrases[idx], 1.2 + level * 0.1, 0.7 + level * 0.15);
+    // Rising chime sequence based on combo level
+    const base = 440 + level * 80;
+    const freqs = Array.from({length: Math.min(level + 2, 8)}, (_, i) => base + i * 110);
+    this._tone(freqs, 'sine', 0.08, 0.15 + level * 0.02);
+  }
+
+  // ULTRA "HAAAYYYYDDDEEEEE!!" on NOS — clear spoken + synth power chord
+  haydeNOS() {
+    this._speakHayde('HAAAAYYYDEEEEE!', 1.0, 0.6);
+    // Power chord synth
+    this._tone([440, 660, 880, 1100], 'square', 0.08, 0.12);
     if (!this.ctx) return;
     try {
-      const ac  = this.ctx;
+      const ac = this.ctx;
       const now = ac.currentTime;
-
-      // Short aspirated "H"
-      const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.04), ac.sampleRate);
-      const nd   = nbuf.getChannelData(0);
-      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      const nsrc = ac.createBufferSource();
-      nsrc.buffer = nbuf;
-      const nfilt = ac.createBiquadFilter();
-      nfilt.type = 'bandpass'; nfilt.frequency.value = 2800; nfilt.Q.value = 0.8;
-      const ngain = ac.createGain();
-      ngain.gain.setValueAtTime(0.14, now);
-      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
-      nsrc.start(now); nsrc.stop(now + 0.05);
-
-      // Quick vocal sweep — higher pitch, shorter
+      // Rising power sweep
       const osc = ac.createOscillator();
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(320, now + 0.03);
-      osc.frequency.linearRampToValueAtTime(400, now + 0.15);  // Hay
-      osc.frequency.setValueAtTime(300, now + 0.22);            // d
-      osc.frequency.linearRampToValueAtTime(520, now + 0.35);   // ee!
-      osc.frequency.linearRampToValueAtTime(420, now + 0.50);   // tail
-
-      // Light vibrato
-      const lfo     = ac.createOscillator();
-      const lfoGain = ac.createGain();
-      lfo.type = 'sine'; lfo.frequency.value = 6.5;
-      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
-      lfoGain.gain.setValueAtTime(0, now);
-      lfoGain.gain.linearRampToValueAtTime(15, now + 0.20);
-
-      // Formants
-      const f1 = ac.createBiquadFilter();
-      f1.type = 'bandpass'; f1.Q.value = 3;
-      f1.frequency.setValueAtTime(780, now + 0.03);
-      f1.frequency.linearRampToValueAtTime(350, now + 0.30);
-
-      const f2 = ac.createBiquadFilter();
-      f2.type = 'bandpass'; f2.Q.value = 5;
-      f2.frequency.setValueAtTime(1300, now + 0.03);
-      f2.frequency.linearRampToValueAtTime(2400, now + 0.30);
-
-      // Gain envelope — punchy and short
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.linearRampToValueAtTime(800, now + 0.5);
       const mg = ac.createGain();
-      mg.gain.setValueAtTime(0, now);
-      mg.gain.linearRampToValueAtTime(0.40, now + 0.05);
-      mg.gain.setValueAtTime(0.35, now + 0.25);
-      mg.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-
-      osc.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
-      lfo.start(now);        lfo.stop(now + 0.58);
-      osc.start(now + 0.03); osc.stop(now + 0.56);
-    } catch(_) {}
-  }
-
-  // ULTRA "HAAAYYYYDDDEEEEE!!" on NOS — wild, high-energy, hilarious
-  haydeNOS() {
-    if (!this.ctx) return;
-    try {
-      const ac  = this.ctx;
-      const now = ac.currentTime;
-
-      // Big breathy "H" burst
-      const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.09), ac.sampleRate);
-      const nd   = nbuf.getChannelData(0);
-      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      const nsrc = ac.createBufferSource();
-      nsrc.buffer = nbuf;
-      const nfilt = ac.createBiquadFilter();
-      nfilt.type = 'bandpass'; nfilt.frequency.value = 2600; nfilt.Q.value = 0.6;
-      const ngain = ac.createGain();
-      ngain.gain.setValueAtTime(0.25, now);
-      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
-      nsrc.start(now); nsrc.stop(now + 0.10);
-
-      // DUAL oscillators for thick, screaming voice
-      const osc1 = ac.createOscillator();
-      const osc2 = ac.createOscillator();
-      osc1.type = 'sawtooth';
-      osc2.type = 'square';  // adds buzzy overlay
-
-      // osc1: main voice — starts high, goes CRAZY high
-      osc1.frequency.setValueAtTime(300, now + 0.06);
-      osc1.frequency.linearRampToValueAtTime(380, now + 0.18);  // HAA
-      osc1.frequency.linearRampToValueAtTime(440, now + 0.45);  // AAYYY
-      osc1.frequency.setValueAtTime(280, now + 0.52);            // D — percussive drop
-      osc1.frequency.linearRampToValueAtTime(600, now + 0.68);   // EE — rocket up!
-      osc1.frequency.linearRampToValueAtTime(880, now + 1.10);   // EEEEEE! soaring screech
-      osc1.frequency.linearRampToValueAtTime(660, now + 1.50);   // tail wobble down
-
-      // osc2: harmony, slightly detuned for comedic thickness
-      osc2.frequency.setValueAtTime(308, now + 0.06);
-      osc2.frequency.linearRampToValueAtTime(388, now + 0.18);
-      osc2.frequency.linearRampToValueAtTime(448, now + 0.45);
-      osc2.frequency.setValueAtTime(286, now + 0.52);
-      osc2.frequency.linearRampToValueAtTime(610, now + 0.68);
-      osc2.frequency.linearRampToValueAtTime(892, now + 1.10);
-      osc2.frequency.linearRampToValueAtTime(672, now + 1.50);
-
-      // WILD vibrato — fast and wobbly (hilarious)
-      const lfo     = ac.createOscillator();
-      const lfoG1   = ac.createGain();
-      const lfoG2   = ac.createGain();
-      lfo.type = 'sine';
-      lfo.frequency.setValueAtTime(5, now);
-      lfo.frequency.linearRampToValueAtTime(9, now + 0.80);   // vibrato speeds up!
-      lfo.frequency.linearRampToValueAtTime(12, now + 1.20);  // goes nuts
-      lfo.connect(lfoG1); lfoG1.connect(osc1.frequency);
-      lfo.connect(lfoG2); lfoG2.connect(osc2.frequency);
-      lfoG1.gain.setValueAtTime(0, now);
-      lfoG1.gain.linearRampToValueAtTime(30, now + 0.35);
-      lfoG1.gain.linearRampToValueAtTime(55, now + 0.90);     // huge wobble
-      lfoG2.gain.setValueAtTime(0, now);
-      lfoG2.gain.linearRampToValueAtTime(25, now + 0.35);
-      lfoG2.gain.linearRampToValueAtTime(45, now + 0.90);
-
-      // Formant filters — exaggerated vowels
-      const f1 = ac.createBiquadFilter();
-      f1.type = 'bandpass'; f1.Q.value = 5;
-      f1.frequency.setValueAtTime(800, now + 0.06);
-      f1.frequency.linearRampToValueAtTime(280, now + 0.70);
-
-      const f2 = ac.createBiquadFilter();
-      f2.type = 'bandpass'; f2.Q.value = 8;
-      f2.frequency.setValueAtTime(1100, now + 0.06);
-      f2.frequency.linearRampToValueAtTime(2800, now + 0.70);
-
-      // Master gain — LOUD and proud
-      const mg = ac.createGain();
-      mg.gain.setValueAtTime(0, now);
-      mg.gain.linearRampToValueAtTime(0.70, now + 0.08);
-      mg.gain.setValueAtTime(0.65, now + 0.50);
-      mg.gain.linearRampToValueAtTime(0.60, now + 1.10);
-      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
-
-      // osc2 gain — slightly quieter for texture
-      const mg2 = ac.createGain();
-      mg2.gain.setValueAtTime(0, now);
-      mg2.gain.linearRampToValueAtTime(0.25, now + 0.08);
-      mg2.gain.setValueAtTime(0.22, now + 0.50);
-      mg2.gain.exponentialRampToValueAtTime(0.001, now + 1.65);
-
-      osc1.connect(f1); f1.connect(f2); f2.connect(mg); mg.connect(ac.destination);
-      osc2.connect(mg2); mg2.connect(ac.destination);
-
-      lfo.start(now);        lfo.stop(now + 1.70);
-      osc1.start(now + 0.06); osc1.stop(now + 1.68);
-      osc2.start(now + 0.06); osc2.stop(now + 1.68);
+      mg.gain.setValueAtTime(0.25, now);
+      mg.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc.connect(mg); mg.connect(ac.destination);
+      osc.start(now); osc.stop(now + 0.65);
     } catch(_) {}
   }
 }
@@ -656,9 +587,11 @@ class Track {
     ctx.lineTo(cx - nearH, nearY);
     ctx.closePath();
     const trkGrad = ctx.createLinearGradient(0, vpY, 0, nearY);
-    trkGrad.addColorStop(0,   '#0e0a06');
-    trkGrad.addColorStop(0.4, '#14100a');
-    trkGrad.addColorStop(1,   '#1a1510');
+    const t1 = th.track1 || '#0e0a06';
+    const t2 = th.track2 || '#1a1510';
+    trkGrad.addColorStop(0,   t1);
+    trkGrad.addColorStop(0.4, t2);
+    trkGrad.addColorStop(1,   t2);
     ctx.fillStyle = trkGrad;
     ctx.fill();
     ctx.restore();
@@ -1099,9 +1032,9 @@ class GameObject {
   draw(ctx, track, cw, ch) {
     if (this.dead) return;
     const pos  = track.project(this.lane, this.depth, cw, ch);
-    const base = 38;
+    const base = 68;
     const s    = pos.scale;
-    const size = base * s * 2.2;
+    const size = base * s * 2.8;
     if (size < 4) return;
 
     const pulse = 1 + Math.sin(this.phase + this.age * 4) * 0.05;
@@ -1115,48 +1048,62 @@ class GameObject {
   }
 
   _drawCollectible(ctx, size) {
-    const emojiSize = Math.max(12, size * 0.75);
+    const emojiSize = Math.max(18, size * 0.85);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // Subtle glow behind item
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,220,100,0.4)';
+    ctx.shadowBlur = size * 0.3;
     ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
   }
 
   _drawHazard(ctx, size) {
-    const emojiSize = Math.max(12, size * 0.75);
+    const emojiSize = Math.max(18, size * 0.85);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // Red danger glow
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,59,48,0.6)';
+    ctx.shadowBlur = size * 0.4;
     ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
   }
 
   _drawSpecial(ctx, size) {
     // Spinning golden halo — no tint, just the emoji at full opacity
-    const r = size * 0.52;
+    const r = size * 0.58;
     const spins = (this.age * 2) % TAU;
     ctx.save();
     ctx.rotate(spins);
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * TAU;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
       const gx = Math.cos(a) * r * 0.72;
       const gy = Math.sin(a) * r * 0.72;
       ctx.fillStyle = '#ffd60a';
       ctx.beginPath();
-      ctx.arc(gx, gy, r * 0.10, 0, TAU);
+      ctx.arc(gx, gy, r * 0.12, 0, TAU);
       ctx.fill();
     }
     ctx.restore();
-    const emojiSize = Math.max(12, size * 0.80);
+    const emojiSize = Math.max(18, size * 0.90);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,214,10,0.7)';
+    ctx.shadowBlur = size * 0.5;
     ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
   }
 
   getBox(track, cw, ch) {
     const pos  = track.project(this.lane, this.depth, cw, ch);
-    const base = 38;
-    const size = base * pos.scale * 2.2 * 0.65; // slightly inset for leniency
+    const base = 68;
+    const size = base * pos.scale * 2.8 * 0.55; // slightly inset for leniency
     return { x: pos.x - size * 0.5, y: pos.y - size * 0.5, w: size, h: size };
   }
 }
@@ -1382,8 +1329,12 @@ class Game {
     this._idleT = 0;
 
     // Combo tracking
-    this.nosComboCount   = 0;
+    this.comboCount      = 0;
+    this.comboLevel      = 0;   // 0=none, 1=x2, 2=x3, 3=x5, etc.
+    this.comboTimer      = 0;   // time since last collect
+    this.comboMultiplier = 1;
     this.lastCollectTime = 0;
+    this.comboDisplayT   = 0;   // animation timer for combo display
   }
 
   init() {
@@ -1493,8 +1444,12 @@ class Game {
     this.elapsed   = 0;
     this.level     = 1;
 
-    this.nosComboCount   = 0;
+    this.comboCount      = 0;
+    this.comboLevel      = 0;
+    this.comboTimer      = 0;
+    this.comboMultiplier = 1;
     this.lastCollectTime = 0;
+    this.comboDisplayT   = 0;
 
     this.player   = new Player();
     this.objects.reset();
@@ -1625,31 +1580,57 @@ class Game {
       this.particles.collectPop(pos.x, pos.y - this.ch * 0.07, emoji);
       this.player.collect(emoji);
 
-      if (special) {
-        this.score    += CFG.SCORE_SPECIAL;
-        this.nosCharge = clamp(this.nosCharge + CFG.NOS_SPECIAL, 0, CFG.NOS_MAX);
-        const theme = this._getTheme();
-        this.toast.show(`מבצע! ${emoji} +${CFG.SCORE_SPECIAL} pts ⭐`, 1200);
-        this.audio.levelUp();
-      } else {
-        this.score    += CFG.SCORE_ITEM;
-        this.nosCharge = clamp(this.nosCharge + CFG.NOS_CHARGE, 0, CFG.NOS_MAX);
-        this.audio.haydeCollect();
-      }
-
-      // Combo tracking: 3+ items within 2 seconds
+      // Combo tracking: collecting within 2.5 seconds keeps combo alive
       const now = this.elapsed;
-      if (now - this.lastCollectTime < 2.0) {
-        this.nosComboCount++;
-        if (this.nosComboCount >= 3) {
-          this.audio.combo();
-          this.nosComboCount = 0;
-        }
+      if (now - this.lastCollectTime < 2.5) {
+        this.comboCount++;
       } else {
-        this.nosComboCount = 1;
+        this.comboCount = 1;
       }
       this.lastCollectTime = now;
+
+      // Combo levels: 3→x2, 5→x3, 8→x5, 12→x8, 18→x10
+      const prevLevel = this.comboLevel;
+      if      (this.comboCount >= 18) { this.comboLevel = 5; this.comboMultiplier = 10; }
+      else if (this.comboCount >= 12) { this.comboLevel = 4; this.comboMultiplier = 8; }
+      else if (this.comboCount >= 8)  { this.comboLevel = 3; this.comboMultiplier = 5; }
+      else if (this.comboCount >= 5)  { this.comboLevel = 2; this.comboMultiplier = 3; }
+      else if (this.comboCount >= 3)  { this.comboLevel = 1; this.comboMultiplier = 2; }
+      else                            { this.comboLevel = 0; this.comboMultiplier = 1; }
+
+      // Trigger combo effects on level-up
+      if (this.comboLevel > prevLevel && this.comboLevel > 0) {
+        this.audio.comboSound(this.comboLevel);
+        const comboNames = ['', 'x2 COMBO!', 'x3 SUPER!', 'x5 MEGA!', 'x8 ULTRA!', 'x10 LEGENDARY!'];
+        const comboEmojis = ['', '🔥', '💥', '⚡', '🌟', '👑'];
+        this.toast.show(`${comboEmojis[this.comboLevel]} ${comboNames[this.comboLevel]} ${comboEmojis[this.comboLevel]}`, 1400);
+        this.comboDisplayT = 2.0; // show combo HUD for 2s
+        // Bonus sparks burst for combos
+        const theme = this._getTheme();
+        const [tnr, tng, tnb] = theme.nos;
+        const comboCols = [`rgb(${tnr},${tng},${tnb})`, '#ffd60a', '#ff3b30', '#ffffff'];
+        this.particles.sparks(pos.x, pos.y - this.ch * 0.1, 12 + this.comboLevel * 6, 1.5, comboCols);
+      }
+
+      const scoreGain = special ? CFG.SCORE_SPECIAL : CFG.SCORE_ITEM;
+      this.score    += scoreGain * this.comboMultiplier;
+      this.nosCharge = clamp(this.nosCharge + (special ? CFG.NOS_SPECIAL : CFG.NOS_CHARGE), 0, CFG.NOS_MAX);
+
+      if (special) {
+        this.toast.show(`מבצע! ${emoji} +${CFG.SCORE_SPECIAL * this.comboMultiplier} pts ⭐`, 1200);
+        this.audio.levelUp();
+      } else {
+        this.audio.haydeCollect();
+      }
     }
+
+    // Decay combo timer
+    if (this.elapsed - this.lastCollectTime > 2.5 && this.comboCount > 0) {
+      this.comboCount = 0;
+      this.comboLevel = 0;
+      this.comboMultiplier = 1;
+    }
+    if (this.comboDisplayT > 0) this.comboDisplayT -= dt;
     if (hit) { this.audio.hayde(); this._gameOver(); return; }
 
     // ── Sparks ──
@@ -1718,6 +1699,31 @@ class Game {
 
     // Player cart
     this.player.draw(ctx, this.track, cw, ch);
+
+    // Combo counter display
+    if (this.comboLevel > 0 && this.comboDisplayT > 0) {
+      const comboAlpha = clamp(this.comboDisplayT / 0.5, 0, 1);
+      const comboScale = 1 + Math.sin(this.elapsed * 8) * 0.05;
+      const comboNames = ['', 'x2', 'x3', 'x5', 'x8', 'x10'];
+      const comboColors = ['', '#ffd60a', '#ff9500', '#ff3b30', '#bf5af2', '#ff2d55'];
+      ctx.save();
+      ctx.globalAlpha = comboAlpha;
+      ctx.translate(cw * 0.5, ch * 0.18);
+      ctx.scale(comboScale, comboScale);
+      ctx.font = `bold ${Math.min(cw * 0.08, 52)}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = comboColors[this.comboLevel] || '#ffd60a';
+      ctx.shadowColor = comboColors[this.comboLevel] || '#ffd60a';
+      ctx.shadowBlur = 20;
+      ctx.fillText(`${comboNames[this.comboLevel]} COMBO`, 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.font = `bold ${Math.min(cw * 0.04, 28)}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = comboAlpha * 0.7;
+      ctx.fillText(`${this.comboCount} items`, 0, Math.min(cw * 0.06, 38));
+      ctx.restore();
+    }
 
     // NOS screen overlay
     if (this.nosActive) {
