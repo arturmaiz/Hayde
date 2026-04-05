@@ -1,7 +1,7 @@
 'use strict';
 /* ============================================================
-   HAYDE — Supermarket Runner
-   Temple Run-inspired · Supermarket Cart · Apple Design
+   HAYDE — Israeli Supermarket Runner
+   Temple Run-inspired · Supermarket Cart · Israeli Theme
    ============================================================ */
 
 // ── Polyfill: roundRect ──────────────────────────────────────
@@ -74,27 +74,27 @@ const CFG = {
   SPARK_MIN:   2,
   SPARK_MAX:   18,
 
-  // Collectibles - much more variety
+  // Collectibles — Israeli supermarket staples
   ITEMS: [
-    '🍎','🍞','🥛','🧀','🍌','🥚','🥫','🧃','🍊','🫐','🍋','🥕','🫙','🥩',
-    '🍕','🍔','🌮','🍜','🍣','🍩','🍫','🍬','🥐','🍿','🥜','🍇','🍓',
-    '🫒','🥦','🥔','🧁','🍦','🥗','🥟','🥪','🧆','🥘','🍲','🥧','🥞',
-    '🫔','🥙','🌯','🥡','🍱','🍛','🍝','🥓','🍗','🥩','🧇','🫓'
+    '🥙','🧆','🫓','🫒','🥒','🍅','🥕','🍋','🍊','🍇','🍉','🌽',
+    '🥚','🧀','🥛','🍞','🥖','🥐','🫘','🥜','🍯','🫙','🧃','🍎',
+    '🍌','🍓','🥦','🥔','🧁','🍦','🥗','🥪','🍕','🥩','🍗','🍝',
+    '🫔','🌯','🥘','🍲','🧇','🥞','🍩','🍫','🍬','🍿','🥫','🫐'
   ],
 
-  // Hazard food items (shown on dangerous obstacles)
-  HAZARD_ITEMS: ['🍄','🧪','🐡','🦠','☢️','🤢','💀','🤮','🧟','🫢'],
+  // Hazard items (skulls only)
+  HAZARD_ITEMS: ['☠️','💀','☠️','💀','☠️','💀','☠️','💀','☠️','💀'],
 
-  // Level visual themes (sky1, sky2, gridRGB, glowRGB, nosRGB)
+  // Level visual themes — Israeli supermarket inspired
   LEVEL_THEMES: [
-    { name:'Deep Space',   sky1:'#030306', sky2:'#07071a', grid:[90,110,255],  glow:[0,113,227],   nos:[0,212,255]  },
-    { name:'Nano Banana',  sky1:'#0a0800', sky2:'#181200', grid:[255,200,0],   glow:[220,160,0],   nos:[255,230,0]  },
-    { name:'Matrix',       sky1:'#020c02', sky2:'#041204', grid:[0,220,80],    glow:[0,180,60],    nos:[0,255,120]  },
-    { name:'Vaporwave',    sky1:'#0a0210', sky2:'#180430', grid:[220,60,255],  glow:[160,0,240],   nos:[255,0,200]  },
-    { name:'Danger Zone',  sky1:'#0a0202', sky2:'#180404', grid:[255,60,60],   glow:[220,0,0],     nos:[255,80,0]   },
-    { name:'Ocean Deep',   sky1:'#000a0c', sky2:'#001520', grid:[0,200,220],   glow:[0,150,200],   nos:[0,230,255]  },
-    { name:'Sunset',       sky1:'#0c0502', sky2:'#1a0a04', grid:[255,130,30],  glow:[220,80,0],    nos:[255,160,0]  },
-    { name:'Toxic',        sky1:'#020a02', sky2:'#041404', grid:[100,255,50],  glow:[80,220,0],    nos:[150,255,0]  },
+    { name:'Shufersal',    sky1:'#0a0805', sky2:'#1a1408', grid:[255,180,50],  glow:[220,140,20],  nos:[255,200,0]  },
+    { name:'Rami Levy',    sky1:'#050a08', sky2:'#0a180e', grid:[40,200,100],  glow:[20,180,60],   nos:[60,255,120] },
+    { name:'Osher Ad',     sky1:'#08050a', sky2:'#140a1a', grid:[180,80,220],  glow:[140,40,200],  nos:[200,60,255] },
+    { name:'Yochananof',   sky1:'#0a0306', sky2:'#1a0610', grid:[255,60,100],  glow:[220,30,70],   nos:[255,80,120] },
+    { name:'Victory',      sky1:'#030608', sky2:'#061018', grid:[60,140,255],  glow:[30,100,220],  nos:[60,160,255] },
+    { name:'Mega',         sky1:'#0a0802', sky2:'#181204', grid:[255,160,30],  glow:[220,120,0],   nos:[255,180,0]  },
+    { name:'Tiv Taam',     sky1:'#020a0a', sky2:'#041818', grid:[0,220,200],   glow:[0,180,160],   nos:[0,255,220]  },
+    { name:'Machsanei Hashuk', sky1:'#0a0a02', sky2:'#18180a', grid:[200,200,60], glow:[160,160,20], nos:[220,220,0] },
   ],
 };
 
@@ -635,9 +635,9 @@ class Track {
     ctx.lineTo(cx - nearH, nearY);
     ctx.closePath();
     const trkGrad = ctx.createLinearGradient(0, vpY, 0, nearY);
-    trkGrad.addColorStop(0,   '#08081e');
-    trkGrad.addColorStop(0.4, '#0c0c24');
-    trkGrad.addColorStop(1,   '#111132');
+    trkGrad.addColorStop(0,   '#0e0a06');
+    trkGrad.addColorStop(0.4, '#14100a');
+    trkGrad.addColorStop(1,   '#1a1510');
     ctx.fillStyle = trkGrad;
     ctx.fill();
     ctx.restore();
@@ -716,7 +716,7 @@ class Track {
     if (nosActive) this._speedLines(ctx, cw, ch, cx, vpY, th);
 
     // ── Below track ─────────────────────────────────────────
-    ctx.fillStyle = '#060610';
+    ctx.fillStyle = '#0a0804';
     ctx.fillRect(0, nearY, cw, ch - nearY);
   }
 
@@ -727,8 +727,8 @@ class Track {
     const lx = [cx - cw * 0.12, cx + cw * 0.12];
     lx.forEach(x => {
       const g = ctx.createLinearGradient(x, 0, cx, vpY);
-      g.addColorStop(0, 'rgba(200,220,255,0.5)');
-      g.addColorStop(1, 'rgba(200,220,255,0)');
+      g.addColorStop(0, 'rgba(255,240,200,0.5)');
+      g.addColorStop(1, 'rgba(255,240,200,0)');
       ctx.strokeStyle = g;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -743,7 +743,7 @@ class Track {
     // Dark rectangular shelf silhouettes on each side
     ctx.save();
     ctx.globalAlpha = 0.60;
-    ctx.fillStyle = '#08080f';
+    ctx.fillStyle = '#0a0806';
     // Left side
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -765,7 +765,7 @@ class Track {
     for (let i = 0; i < shelfCols; i++) {
       const fy = vpY + (i / shelfCols) * (nearY - vpY);
       const fw = cx - lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols);
-      ctx.fillStyle = 'rgba(180,190,255,0.9)';
+      ctx.fillStyle = 'rgba(220,200,160,0.9)';
       ctx.fillRect(0, fy - 1.5, fw, 2.5);
       ctx.fillRect(cx + lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols), fy - 1.5, cw - cx - lerp(cw * CFG.FAR_HALF, nearH, i / shelfCols), 2.5);
     }
@@ -1138,22 +1138,15 @@ class GameObject {
   _drawCollectible(ctx, size) {
     const r = size * 0.5;
 
-    // Outer glow aura
-    const halo = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 1.8);
-    halo.addColorStop(0, 'rgba(255,220,50,0.18)');
-    halo.addColorStop(0.5, 'rgba(255,200,20,0.08)');
-    halo.addColorStop(1, 'rgba(255,180,0,0)');
-    ctx.fillStyle = halo;
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.8, 0, TAU); ctx.fill();
+    // Soft glow behind emoji
+    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.2);
+    glow.addColorStop(0, 'rgba(255,255,255,0.12)');
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
 
-    // Subtle ring
-    ctx.beginPath(); ctx.arc(0, 0, r * 0.85, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,220,80,0.45)';
-    ctx.lineWidth = Math.max(1, r * 0.10);
-    ctx.stroke();
-
-    // Big emoji - the star of the show
-    const emojiSize = Math.max(10, r * 1.35);
+    // Just the food emoji — no ring, no circle
+    const emojiSize = Math.max(12, r * 1.5);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1164,46 +1157,20 @@ class GameObject {
     const r   = size * 0.5;
     const flk = 0.6 + Math.sin(this.age * 5) * 0.18;
 
-    // Big pulsing danger aura
-    const aura = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.0);
-    aura.addColorStop(0, `rgba(255,59,48,${flk * 0.28})`);
-    aura.addColorStop(0.6, `rgba(255,59,48,${flk * 0.10})`);
+    // Subtle red danger glow behind skull
+    const aura = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.4);
+    aura.addColorStop(0, `rgba(255,59,48,${flk * 0.18})`);
+    aura.addColorStop(0.6, `rgba(255,59,48,${flk * 0.06})`);
     aura.addColorStop(1, 'rgba(255,59,48,0)');
     ctx.fillStyle = aura;
-    ctx.beginPath(); ctx.arc(0, 0, r * 2.0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.4, 0, TAU); ctx.fill();
 
-    // Red ring warning border
-    ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, TAU);
-    ctx.strokeStyle = `rgba(255,59,48,${0.65 + flk * 0.25})`;
-    ctx.lineWidth = Math.max(1.5, r * 0.13);
-    ctx.stroke();
-
-    // The hazard food emoji (large)
-    const emojiSize = Math.max(10, r * 1.25);
+    // Just the skull emoji — no ring, no circle, no badge
+    const emojiSize = Math.max(12, r * 1.5);
     ctx.font = `${emojiSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(this.emoji, 0, r * 0.06);
-
-    // Skull badge overlay (top-right corner)
-    const badgeR = r * 0.52;
-    const bx = r * 0.55;
-    const by = -r * 0.55;
-
-    // Skull badge background
-    ctx.beginPath(); ctx.arc(bx, by, badgeR, 0, TAU);
-    ctx.fillStyle = 'rgba(180, 0, 0, 0.90)';
-    ctx.fill();
-    ctx.beginPath(); ctx.arc(bx, by, badgeR, 0, TAU);
-    ctx.strokeStyle = 'rgba(255, 100, 80, 0.80)';
-    ctx.lineWidth = Math.max(0.8, badgeR * 0.12);
-    ctx.stroke();
-
-    // Skull emoji in badge
-    ctx.font = `${Math.max(6, badgeR * 1.1)}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('☠️', bx, by + badgeR * 0.06);
   }
 
   getBox(track, cw, ch) {
