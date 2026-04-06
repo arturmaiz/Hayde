@@ -111,15 +111,95 @@ const CFG = {
 
 
 // ── Audio ────────────────────────────────────────────────────
+//
+// Architecture:
+//   Sources (oscillators / noise) → SFX submix → Master bus → destination
+//                   Voice (SpeechSynthesis) ──────────────────────────────
+//
+// Mobile voice limit: MAX_VOICES simultaneous oscillator notes.
+// Fade-in of FADE_IN seconds on every oscillator prevents clicks/pops.
+//
 class AudioSystem {
+  // ── Mixing levels (dB targets from audio-systems skill) ──────
+  // SFX bus: -6 dB  →  gain ≈ 0.50
+  // Voice:   -3 dB  →  handled by SpeechSynthesis volume = 1.0
+  // Master:  -3 dB  →  gain ≈ 0.71
+  static MAX_VOICES = 16;   // mobile voice limit
+  static FADE_IN    = 0.005; // 5 ms fade-in to kill clicks
+
+  // ── Sound bank: all SFX definitions in one place ─────────────
+  static BANKS = {
+    jump:      { freqs: [340, 520],            type: 'sine',     dur: 0.14, vol: 0.36 },
+    land:      { freqs: [130],                 type: 'triangle', dur: 0.10, vol: 0.44 },
+    collect:   { freqs: [660, 880],            type: 'sine',     dur: 0.11, vol: 0.36 },
+    die:       { freqs: [220, 140, 90],        type: 'sawtooth', dur: 0.30, vol: 0.76 },
+    nos:       { freqs: [440, 660, 880, 1100], type: 'square',   dur: 0.08, vol: 0.24 },
+    levelUp:   { freqs: [400, 520, 660, 880],  type: 'sine',     dur: 0.18, vol: 0.40 },
+    slide:     { freqs: [200, 160, 120],       type: 'sawtooth', dur: 0.18, vol: 0.30 },
+    nearMiss:  { freqs: [400, 350, 280],       type: 'triangle', dur: 0.12, vol: 0.30 },
+    nosEmpty:  { freqs: [300, 200, 120],       type: 'sawtooth', dur: 0.20, vol: 0.36 },
+    combo:     { freqs: [660, 880, 1100, 1320],type: 'sine',     dur: 0.10, vol: 0.44 },
+    collectV:  [
+      { freqs: [660, 880, 1100],       type: 'sine',     dur: 0.11, vol: 0.32 },
+      { freqs: [523, 659, 784],        type: 'sine',     dur: 0.10, vol: 0.36 },
+      { freqs: [880, 660],             type: 'triangle', dur: 0.08, vol: 0.40 },
+      { freqs: [440, 550, 660, 880],   type: 'sine',     dur: 0.07, vol: 0.30 },
+      { freqs: [1047, 1319],           type: 'sine',     dur: 0.09, vol: 0.34 },
+    ],
+  };
+
+  // ── Voice bank: spoken phrases ────────────────────────────────
+  static VOICE_STYLES = [
+    { rate: 1.0, pitch: 0.5 },
+    { rate: 1.3, pitch: 1.8 },
+    { rate: 0.9, pitch: 0.3 },
+    { rate: 1.5, pitch: 1.5 },
+    { rate: 0.8, pitch: 1.0 },
+    { rate: 1.2, pitch: 2.0 },
+    { rate: 1.1, pitch: 0.7 },
+    { rate: 1.4, pitch: 1.2 },
+  ];
+
+  static MOTIVATE_PHRASES = [
+    'Yalla habibi!', 'Keep going!', 'You are amazing!', 'Sababa!',
+    'Kol hakavod!', 'What a legend!', 'Faster faster!', 'Ma kore achi!',
+    'Incredible!', 'You are on fire!', 'Supermarket champion!', 'Beast mode!',
+    'Unbelievable!', 'So fast!', 'Cannot stop you!', 'Level up baby!',
+    'Mashallah!', 'Walla walla!', 'Achi sheli!', 'You rock!',
+  ];
+
+  static COMBO_PHRASES = [
+    'Yalla!', 'Sababa!', 'Combo!', 'Amazing!', 'Incredible!',
+    'On fire!', 'Legendary!', 'Unstoppable!', 'HAYDE HAYDE HAYDE!',
+  ];
+
+  static MOTIVATE_FANFARES = [
+    [262, 330, 392, 523, 659, 784],
+    [294, 370, 440, 587, 740, 880],
+    [330, 415, 494, 659, 831, 988],
+    [349, 440, 523, 698, 880, 1047],
+    [392, 494, 587, 784, 988, 1175],
+  ];
+
   constructor() {
-    this.ctx = null;
+    this.ctx        = null;
+    this._master    = null; // master gain node
+    this._sfxBus    = null; // SFX submix
+    this._voices    = 0;    // active oscillator voice count
   }
 
+  // ── Lifecycle ─────────────────────────────────────────────────
   boot() {
     if (this.ctx) return;
     try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx     = new (window.AudioContext || window.webkitAudioContext)();
+      this._master = this.ctx.createGain();
+      this._master.gain.value = 0.71; // -3 dB master
+      this._master.connect(this.ctx.destination);
+
+      this._sfxBus = this.ctx.createGain();
+      this._sfxBus.gain.value = 0.50; // -6 dB SFX submix
+      this._sfxBus.connect(this._master);
     } catch (_) {}
   }
 
@@ -127,231 +207,189 @@ class AudioSystem {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
   }
 
-  _tone(freqs, type = 'sine', dur = 0.15, vol = 0.22, detuneSeq = []) {
-    if (!this.ctx) return;
+  // ── Core oscillator engine ────────────────────────────────────
+  // Each note is staggered by 60 ms, fades in 5 ms then decays.
+  // Routes through SFX submix → master → destination.
+  _tone(freqs, type = 'sine', dur = 0.15, vol = 0.22) {
+    if (!this.ctx || !this._sfxBus) return;
+    const { FADE_IN, MAX_VOICES } = AudioSystem;
     freqs.forEach((f, i) => {
+      if (this._voices >= MAX_VOICES) return; // voice limit
+      this._voices++;
       try {
+        const t    = this.ctx.currentTime + i * 0.06;
         const osc  = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this._sfxBus);
         osc.type = type;
-        osc.frequency.setValueAtTime(f, this.ctx.currentTime + i * 0.06);
-        gain.gain.setValueAtTime(vol, this.ctx.currentTime + i * 0.06);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.06 + dur);
-        osc.start(this.ctx.currentTime + i * 0.06);
-        osc.stop(this.ctx.currentTime  + i * 0.06 + dur + 0.01);
-      } catch (_) {}
+        osc.frequency.setValueAtTime(f, t);
+        // 5 ms fade-in → sustain → exponential decay (no clicks)
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.linearRampToValueAtTime(vol, t + FADE_IN);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.start(t);
+        osc.stop(t + dur + 0.01);
+        osc.onended = () => { this._voices = Math.max(0, this._voices - 1); };
+      } catch (_) { this._voices = Math.max(0, this._voices - 1); }
     });
   }
 
-  jump()    { this._tone([340, 520], 'sine',     0.14, 0.18); }
-  land()    { this._tone([130],      'triangle', 0.10, 0.22); }
-  collect() { this._tone([660, 880], 'sine',     0.11, 0.18); }
-  die()     { this._tone([220, 140, 90], 'sawtooth', 0.30, 0.38); }
-  nos()     { this._tone([440, 660, 880, 1100], 'square', 0.08, 0.12); }
-  levelUp() { this._tone([400, 520, 660, 880], 'sine', 0.18, 0.20); }
-
-  // Random funny collect sounds - cycles through 5 variants
-  collectRandom() {
-    const v = rndInt(0, 4);
-    if (v === 0)      this._tone([660, 880, 1100], 'sine',     0.11, 0.16);
-    else if (v === 1) this._tone([523, 659, 784], 'sine',      0.10, 0.18);
-    else if (v === 2) this._tone([880, 660], 'triangle',       0.08, 0.20);
-    else if (v === 3) this._tone([440, 550, 660, 880], 'sine', 0.07, 0.15);
-    else              this._tone([1047, 1319], 'sine',         0.09, 0.17);
+  // ── Play a sound bank entry by key ───────────────────────────
+  _play(key) {
+    const b = AudioSystem.BANKS[key];
+    if (b) this._tone(b.freqs, b.type, b.dur, b.vol);
   }
 
-  slide() { this._tone([200, 160, 120], 'sawtooth', 0.18, 0.15); }
-
-  // Motivational fanfare + spoken phrase in varied voices
-  motivate(level) {
-    // Spoken motivation in different voices
-    const phrases = [
-      'Yalla habibi!', 'Keep going!', 'You are amazing!', 'Sababa!',
-      'Kol hakavod!', 'What a legend!', 'Faster faster!', 'Ma kore achi!',
-      'Incredible!', 'You are on fire!', 'Supermarket champion!', 'Beast mode!',
-      'Unbelievable!', 'So fast!', 'Cannot stop you!', 'Level up baby!',
-      'Mashallah!', 'Walla walla!', 'Achi sheli!', 'You rock!',
-    ];
-    const phrase = phrases[rndInt(0, phrases.length - 1)];
-
-    // Use different pitch/rate for each level to simulate varied voices
+  // ── SpeechSynthesis voice ─────────────────────────────────────
+  _speak(text, rate = 1.0, pitch = 1.0) {
     try {
-      if ('speechSynthesis' in window) {
-        const u = new SpeechSynthesisUtterance(phrase);
-        // Vary voice characteristics dramatically
-        const voiceStyles = [
-          { rate: 1.0, pitch: 0.5 },   // deep male
-          { rate: 1.3, pitch: 1.8 },   // high female
-          { rate: 0.9, pitch: 0.3 },   // very deep
-          { rate: 1.5, pitch: 1.5 },   // fast excited
-          { rate: 0.8, pitch: 1.0 },   // slow dramatic
-          { rate: 1.2, pitch: 2.0 },   // squeaky
-          { rate: 1.1, pitch: 0.7 },   // medium male
-          { rate: 1.4, pitch: 1.2 },   // energetic
-        ];
-        const style = voiceStyles[level % voiceStyles.length];
-        u.rate   = style.rate;
-        u.pitch  = style.pitch;
-        u.volume = 1.0;
-        const voices = speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          // Pick a different voice for each level
-          u.voice = voices[level % voices.length];
-        }
-        speechSynthesis.cancel();
-        speechSynthesis.speak(u);
-      }
-    } catch(_) {}
+      if (!('speechSynthesis' in window)) return;
+      const u    = new SpeechSynthesisUtterance(text);
+      u.rate     = rate;
+      u.pitch    = pitch;
+      u.volume   = 1.0;
+      const voices = speechSynthesis.getVoices();
+      if (voices.length > 0) u.voice = voices[rndInt(0, voices.length - 1)];
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (_) {}
+  }
 
-    // Also play fanfare chime
-    if (!this.ctx) return;
-    const seqs = [
-      [262, 330, 392, 523, 659, 784],
-      [294, 370, 440, 587, 740, 880],
-      [330, 415, 494, 659, 831, 988],
-      [349, 440, 523, 698, 880, 1047],
-      [392, 494, 587, 784, 988, 1175],
-    ];
-    const seq = seqs[level % seqs.length];
+  // ── Public SFX API ────────────────────────────────────────────
+  jump()    { this._play('jump'); }
+  land()    { this._play('land'); }
+  collect() { this._play('collect'); }
+  die()     { this._play('die'); }
+  nos()     { this._play('nos'); }
+  levelUp() { this._play('levelUp'); }
+  slide()   { this._play('slide'); }
+  nearMiss(){ this._play('nearMiss'); }
+  nosEmpty(){ this._play('nosEmpty'); }
+  combo()   { this._play('combo'); }
+
+  collectRandom() {
+    const variants = AudioSystem.BANKS.collectV;
+    const b = variants[rndInt(0, variants.length - 1)];
+    this._tone(b.freqs, b.type, b.dur, b.vol);
+  }
+
+  // ── Motivational milestone fanfare + spoken phrase ────────────
+  motivate(level) {
+    const phrases = AudioSystem.MOTIVATE_PHRASES;
+    this._speak(
+      phrases[rndInt(0, phrases.length - 1)],
+      AudioSystem.VOICE_STYLES[level % AudioSystem.VOICE_STYLES.length].rate,
+      AudioSystem.VOICE_STYLES[level % AudioSystem.VOICE_STYLES.length].pitch,
+    );
+
+    const fanfares = AudioSystem.MOTIVATE_FANFARES;
+    const seq      = fanfares[level % fanfares.length];
     seq.forEach((f, i) => {
+      if (this._voices >= AudioSystem.MAX_VOICES) return;
+      this._voices++;
       try {
+        const t    = this.ctx.currentTime + i * 0.09;
         const osc  = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this._sfxBus);
         osc.type = 'sine';
-        const t = this.ctx.currentTime + i * 0.09;
         osc.frequency.setValueAtTime(f, t);
-        gain.gain.setValueAtTime(0.18, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.linearRampToValueAtTime(0.36, t + AudioSystem.FADE_IN);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
         osc.start(t);
         osc.stop(t + 0.26);
-      } catch(_) {}
+        osc.onended = () => { this._voices = Math.max(0, this._voices - 1); };
+      } catch (_) { this._voices = Math.max(0, this._voices - 1); }
     });
   }
 
-  // Funny "uh oh" sound on near miss
-  nearMiss() { this._tone([400, 350, 280], 'triangle', 0.12, 0.15); }
-
-  // NOS depleted sound
-  nosEmpty() { this._tone([300, 200, 120], 'sawtooth', 0.20, 0.18); }
-
-  // Combo sound for collecting multiple items quickly
-  combo() { this._tone([660, 880, 1100, 1320], 'sine', 0.10, 0.22); }
-
-  // "Haaayyyydeeeeeee!!" — clear spoken collision shout (SpeechSynthesis + synth fallback)
+  // ── "Hayde!" collision shout ──────────────────────────────────
   hayde() {
-    // Try SpeechSynthesis for a clear human voice
-    this._speakHayde('Haaaaydeee!', 1.3, 1.0);
-    // Also play synth undertone for impact
+    this._speak('Haaaaydeee!', 1.3, 1.0);
     this._haydesynth();
   }
 
-  // Speak text using SpeechSynthesis API with varied voice
-  _speakHayde(text, rate = 1.0, pitch = 1.0) {
-    try {
-      if (!('speechSynthesis' in window)) return;
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate   = rate;
-      u.pitch  = pitch;
-      u.volume = 1.0;
-      // Pick a random available voice for variety
-      const voices = speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        u.voice = voices[rndInt(0, voices.length - 1)];
-      }
-      speechSynthesis.cancel();
-      speechSynthesis.speak(u);
-    } catch(_) {}
-  }
-
   _haydesynth() {
-    if (!this.ctx) return;
+    if (!this.ctx || !this._sfxBus) return;
     try {
       const ac  = this.ctx;
       const now = ac.currentTime;
+      const { FADE_IN } = AudioSystem;
 
-      // "H" — aspirated noise burst
+      // Aspirated noise burst ("H")
       const nbuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.07), ac.sampleRate);
       const nd   = nbuf.getChannelData(0);
       for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      const nsrc = ac.createBufferSource();
+      const nsrc  = ac.createBufferSource();
       nsrc.buffer = nbuf;
       const nfilt = ac.createBiquadFilter();
-      nfilt.type = 'bandpass'; nfilt.frequency.value = 2200; nfilt.Q.value = 0.8;
+      nfilt.type  = 'bandpass'; nfilt.frequency.value = 2200; nfilt.Q.value = 0.8;
       const ngain = ac.createGain();
-      ngain.gain.setValueAtTime(0.12, now);
-      ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(ac.destination);
+      ngain.gain.setValueAtTime(0.0001, now);
+      ngain.gain.linearRampToValueAtTime(0.24, now + FADE_IN);
+      ngain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+      nsrc.connect(nfilt); nfilt.connect(ngain); ngain.connect(this._sfxBus);
       nsrc.start(now); nsrc.stop(now + 0.08);
 
-      // Subtle synth undertone (lower volume, speech is primary)
+      // Synth undertone (speech is primary, keep this subtle)
       const osc = ac.createOscillator();
-      osc.type = 'sawtooth';
+      osc.type  = 'sawtooth';
       osc.frequency.setValueAtTime(260, now + 0.05);
       osc.frequency.linearRampToValueAtTime(350, now + 0.55);
       osc.frequency.setValueAtTime(240, now + 0.65);
       osc.frequency.linearRampToValueAtTime(460, now + 0.78);
       osc.frequency.linearRampToValueAtTime(480, now + 1.15);
-
       const f1 = ac.createBiquadFilter();
-      f1.type = 'bandpass'; f1.Q.value = 4;
+      f1.type  = 'bandpass'; f1.Q.value = 4;
       f1.frequency.setValueAtTime(780, now + 0.05);
       f1.frequency.linearRampToValueAtTime(300, now + 0.75);
-
       const mg = ac.createGain();
-      mg.gain.setValueAtTime(0, now);
+      mg.gain.setValueAtTime(0.0001, now);
       mg.gain.linearRampToValueAtTime(0.18, now + 0.08);
-      mg.gain.exponentialRampToValueAtTime(0.001, now + 1.20);
-
-      osc.connect(f1); f1.connect(mg); mg.connect(ac.destination);
+      mg.gain.exponentialRampToValueAtTime(0.0001, now + 1.20);
+      osc.connect(f1); f1.connect(mg); mg.connect(this._sfxBus);
       osc.start(now + 0.05); osc.stop(now + 1.22);
-    } catch(_) {}
+    } catch (_) {}
   }
 
-  // Quick mini "Hayde!" on item collect — clear spoken voice
+  // ── Item collect shout ────────────────────────────────────────
   haydeCollect() {
-    this._speakHayde('Hayde!', 1.6, rnd(0.8, 1.4));
-    // Quick cheerful chime
-    this._tone([660, 880], 'sine', 0.10, 0.12);
+    this._speak('Hayde!', 1.6, rnd(0.8, 1.4));
+    this._tone([660, 880], 'sine', 0.10, 0.24);
   }
 
-  // Combo sounds — escalating excitement per combo level
+  // ── Escalating combo shout ────────────────────────────────────
   comboSound(level) {
-    const phrases = [
-      'Yalla!', 'Sababa!', 'Combo!', 'Amazing!', 'Incredible!',
-      'On fire!', 'Legendary!', 'Unstoppable!', 'HAYDE HAYDE HAYDE!'
-    ];
-    const idx = Math.min(level - 1, phrases.length - 1);
-    this._speakHayde(phrases[idx], 1.2 + level * 0.1, 0.7 + level * 0.15);
-    // Rising chime sequence based on combo level
-    const base = 440 + level * 80;
-    const freqs = Array.from({length: Math.min(level + 2, 8)}, (_, i) => base + i * 110);
-    this._tone(freqs, 'sine', 0.08, 0.15 + level * 0.02);
+    const phrases = AudioSystem.COMBO_PHRASES;
+    const idx     = Math.min(level - 1, phrases.length - 1);
+    this._speak(phrases[idx], 1.2 + level * 0.1, 0.7 + level * 0.15);
+    const base  = 440 + level * 80;
+    const freqs = Array.from({ length: Math.min(level + 2, 8) }, (_, i) => base + i * 110);
+    this._tone(freqs, 'sine', 0.08, 0.30 + level * 0.04);
   }
 
-  // ULTRA "HAAAYYYYDDDEEEEE!!" on NOS — clear spoken + synth power chord
+  // ── NOS activation ───────────────────────────────────────────
   haydeNOS() {
-    this._speakHayde('HAAAAYYYDEEEEE!', 1.0, 0.6);
-    // Power chord synth
-    this._tone([440, 660, 880, 1100], 'square', 0.08, 0.12);
-    if (!this.ctx) return;
+    this._speak('HAAAAYYYDEEEEE!', 1.0, 0.6);
+    this._tone([440, 660, 880, 1100], 'square', 0.08, 0.24);
+    if (!this.ctx || !this._sfxBus) return;
     try {
-      const ac = this.ctx;
+      const ac  = this.ctx;
       const now = ac.currentTime;
-      // Rising power sweep
       const osc = ac.createOscillator();
-      osc.type = 'sawtooth';
+      osc.type  = 'sawtooth';
       osc.frequency.setValueAtTime(200, now);
       osc.frequency.linearRampToValueAtTime(800, now + 0.5);
       const mg = ac.createGain();
-      mg.gain.setValueAtTime(0.25, now);
-      mg.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-      osc.connect(mg); mg.connect(ac.destination);
+      mg.gain.setValueAtTime(0.0001, now);
+      mg.gain.linearRampToValueAtTime(0.25, now + AudioSystem.FADE_IN);
+      mg.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+      osc.connect(mg); mg.connect(this._sfxBus);
       osc.start(now); osc.stop(now + 0.65);
-    } catch(_) {}
+    } catch (_) {}
   }
 }
 
