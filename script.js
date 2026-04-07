@@ -4,6 +4,56 @@
    Temple Run-inspired · Supermarket Cart · Israeli Theme
    ============================================================ */
 
+// ── Capacitor Native Bootstrap ──────────────────────────────
+(async () => {
+  if (!window.Capacitor?.isNativePlatform()) return;
+  try {
+    const { StatusBar } = Capacitor.Plugins;
+    await StatusBar.hide();
+  } catch (_) {}
+  try {
+    const { ScreenOrientation } = Capacitor.Plugins;
+    await ScreenOrientation.lock({ orientation: 'landscape' });
+  } catch (_) {}
+})();
+
+// ── Wake Lock Helper ────────────────────────────────────────
+const WakeLock = {
+  _lock: null,
+  async acquire() {
+    try {
+      if ('wakeLock' in navigator) {
+        this._lock = await navigator.wakeLock.request('screen');
+      }
+    } catch (_) {}
+  },
+  async release() {
+    try {
+      if (this._lock) { await this._lock.release(); this._lock = null; }
+    } catch (_) {}
+  },
+};
+
+// ── Haptics Helper ──────────────────────────────────────────
+const HapticsHelper = {
+  _cap() { return window.Capacitor?.isNativePlatform() ? Capacitor.Plugins.Haptics : null; },
+  async impact(style) {
+    try { await this._cap()?.impact({ style }); } catch (_) {}
+  },
+  async notification(type) {
+    try { await this._cap()?.notification({ type }); } catch (_) {}
+  },
+  async selection() {
+    try { await this._cap()?.selectionStart(); await this._cap()?.selectionEnd(); } catch (_) {}
+  },
+  light()   { this.impact('Light'); },
+  medium()  { this.impact('Medium'); },
+  heavy()   { this.impact('Heavy'); },
+  success() { this.notification('Success'); },
+  error()   { this.notification('Error'); },
+  click()   { this.selection(); },
+};
+
 // ── Polyfill: roundRect ──────────────────────────────────────
 if (!CanvasRenderingContext2D.prototype.roundRect) {
   CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
@@ -1254,15 +1304,41 @@ class HUD {
     this.el       = document.getElementById('hud');
     this.scoreEl  = document.getElementById('hud-score');
     this.distEl   = document.getElementById('hud-dist');
+    this.levelEl  = document.getElementById('hud-level');
+    this.comboEl  = document.getElementById('hud-combo');
     this.nosFill  = document.getElementById('nos-fill');
     this.nosReady = document.getElementById('nos-ready');
+    this._lastScore = 0;
+    this._popTid    = null;
   }
 
   show() { this.el.classList.remove('hud-off'); }
   hide() { this.el.classList.add('hud-off'); }
 
-  setScore(v)    { this.scoreEl.textContent = Math.floor(v); }
-  setDist(v)     { this.distEl.textContent  = Math.floor(v) + ' m'; }
+  setScore(v) {
+    const s = Math.floor(v);
+    this.scoreEl.textContent = s;
+    // Pop animation on significant score change
+    if (s - this._lastScore >= 10) {
+      this.scoreEl.classList.add('score-pop');
+      if (this._popTid) clearTimeout(this._popTid);
+      this._popTid = setTimeout(() => this.scoreEl.classList.remove('score-pop'), 120);
+      this._lastScore = s;
+    }
+  }
+  setDist(v) { this.distEl.textContent = Math.floor(v) + ' m'; }
+  setLevel(name) { this.levelEl.textContent = name; }
+  setCombo(level, count) {
+    if (level > 0) {
+      const names = ['', 'x2', 'x3', 'x5', 'x8', 'x10'];
+      this.comboEl.textContent = `${names[level]} ${count}`;
+      this.comboEl.classList.remove('hud-combo-off');
+      this.comboEl.classList.add('hud-combo-on');
+    } else {
+      this.comboEl.classList.remove('hud-combo-on');
+      this.comboEl.classList.add('hud-combo-off');
+    }
+  }
 
   setNOS(charge, active) {
     const pct  = clamp(charge, 0, 100);
@@ -1286,12 +1362,13 @@ class HUD {
 class Screens {
   constructor() {
     this.map = {
+      loading:  document.getElementById('screen-loading'),
       menu:     document.getElementById('screen-menu'),
       tutorial: document.getElementById('screen-tutorial'),
       pause:    document.getElementById('screen-pause'),
       gameover: document.getElementById('screen-gameover'),
     };
-    this.cur = null;
+    this.cur = 'loading';
   }
 
   show(name) {
@@ -1335,7 +1412,7 @@ class Game {
     this.ch     = 0;
 
     // State
-    this.state   = 'MENU'; // MENU | PLAYING | PAUSED | GAMEOVER
+    this.state   = 'LOADING'; // LOADING | MENU | PLAYING | PAUSED | GAMEOVER
 
     // Systems
     this.track    = new Track();
@@ -1366,6 +1443,23 @@ class Game {
     // Menu idle anim
     this._idleT = 0;
 
+    // Floating menu particles
+    this._menuParticles = Array.from({ length: 20 }, () => ({
+      x: Math.random(), y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.02,
+      vy: -Math.random() * 0.03 - 0.01,
+      size: Math.random() * 3 + 1,
+      alpha: Math.random() * 0.3 + 0.1,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    // Screen effects
+    this._shakeT    = 0;   // remaining shake time
+    this._shakeAmp  = 0;   // shake amplitude in px
+    this._flashT    = 0;   // screen flash timer
+    this._flashColor = 'rgba(255,59,48,0.3)';
+    this._pulseT    = 0;   // NOS pulse scale timer
+
     // Combo tracking
     this.comboCount      = 0;
     this.comboLevel      = 0;   // 0=none, 1=x2, 2=x3, 3=x5, etc.
@@ -1373,6 +1467,7 @@ class Game {
     this.comboMultiplier = 1;
     this.lastCollectTime = 0;
     this.comboDisplayT   = 0;   // animation timer for combo display
+    this._itemsCollected = 0;   // total items collected this run
   }
 
   init() {
@@ -1383,8 +1478,20 @@ class Game {
     this.audio.boot();
     this.input.init();
     this._bindUI();
-    this.screens.show('menu');
+    this.screens.show('loading');
     this.hud.hide();
+
+    // Loading screen: tap or auto-transition to menu
+    const loadingEl = document.getElementById('screen-loading');
+    const goToMenu = () => {
+      if (this.state !== 'LOADING') return;
+      this.audio.boot();
+      this.audio.resume();
+      this.state = 'MENU';
+      this.screens.show('menu');
+    };
+    loadingEl.addEventListener('click', goToMenu);
+    loadingEl.addEventListener('touchend', (e) => { e.preventDefault(); goToMenu(); }, { passive: false });
 
     requestAnimationFrame(ts => this._loop(ts));
   }
@@ -1424,6 +1531,17 @@ class Game {
 
     window.addEventListener('resize',            () => this._resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this._resize(), 120));
+
+    // Android back button: pause or go to menu instead of closing app
+    if (window.Capacitor?.isNativePlatform()) {
+      try {
+        Capacitor.Plugins.App.addListener('backButton', () => {
+          if (this.state === 'PLAYING') this._pause();
+          else if (this.state === 'PAUSED') this._goMenu();
+          else if (this.state === 'GAMEOVER') this._goMenu();
+        });
+      } catch (_) {}
+    }
   }
 
   // ── Resize ──────────────────────────────────────────────────
@@ -1438,17 +1556,17 @@ class Game {
   }
 
   // ── Gameplay actions ─────────────────────────────────────────
-  _left()  { if (this.state !== 'PLAYING') return; this.audio.resume(); this.player.moveLeft(); }
-  _right() { if (this.state !== 'PLAYING') return; this.audio.resume(); this.player.moveRight(); }
+  _left()  { if (this.state !== 'PLAYING') return; this.audio.resume(); if (this.player.moveLeft()) HapticsHelper.click(); }
+  _right() { if (this.state !== 'PLAYING') return; this.audio.resume(); if (this.player.moveRight()) HapticsHelper.click(); }
   _up()    {
     if (this.state !== 'PLAYING') return;
     this.audio.resume();
-    if (this.player.jump()) this.audio.jump();
+    if (this.player.jump()) { this.audio.jump(); HapticsHelper.click(); }
   }
   _down()  {
     if (this.state !== 'PLAYING') return;
     this.audio.resume();
-    if (this.player.slide()) this.audio.slide();
+    if (this.player.slide()) { this.audio.slide(); HapticsHelper.click(); }
     this._tryNOS();
   }
   _tap(e) {
@@ -1462,8 +1580,16 @@ class Game {
     if (this.nosCharge >= CFG.NOS_MIN && !this.nosActive) {
       this.nosActive = true;
       this.audio.haydeNOS();
+      HapticsHelper.heavy();
+      this._pulse();
+      this._flash('rgba(0,212,255,0.15)', 0.12);
     }
   }
+
+  // ── Screen effects ──────────────────────────────────────────
+  _shake(amp, dur) { this._shakeAmp = amp; this._shakeT = dur; }
+  _flash(color, dur) { this._flashColor = color; this._flashT = dur; }
+  _pulse() { this._pulseT = 0.2; }
 
   // ── Theme helper ─────────────────────────────────────────────
   _getTheme() {
@@ -1488,6 +1614,7 @@ class Game {
     this.comboMultiplier = 1;
     this.lastCollectTime = 0;
     this.comboDisplayT   = 0;
+    this._itemsCollected = 0;
 
     this.player   = new Player();
     this.objects.reset();
@@ -1500,11 +1627,13 @@ class Game {
     this.hud.setNOS(0, false);
     this.state = 'PLAYING';
     this.audio.resume();
+    WakeLock.acquire();
   }
 
   _pause() {
     if (this.state !== 'PLAYING') return;
     this.state = 'PAUSED';
+    WakeLock.release();
     document.getElementById('pause-score').textContent = Math.floor(this.score);
     this.screens.show('pause');
   }
@@ -1513,10 +1642,12 @@ class Game {
     if (this.state !== 'PAUSED') return;
     this.state = 'PLAYING';
     this.screens.hide();
+    WakeLock.acquire();
   }
 
   _goMenu() {
     this.state = 'MENU';
+    WakeLock.release();
     this.screens.show('menu');
     this.hud.hide();
     this._refreshBestUI();
@@ -1525,21 +1656,57 @@ class Game {
   _gameOver() {
     this.state     = 'GAMEOVER';
     this.nosActive = false;
+    WakeLock.release();
     this.player.die();
     this.audio.die();
+    HapticsHelper.error();
+    this._shake(12, 0.5);
+    this._flash('rgba(255,59,48,0.35)', 0.18);
 
-    if (this.score > this.best) {
-      this.best = Math.floor(this.score);
+    const finalScore = Math.floor(this.score);
+    const finalDist  = Math.floor(this.distance);
+    const finalLevel = this.level;
+    const finalItems = this.player.collected.length > 0 ? this._itemsCollected : 0;
+    const isNewBest  = finalScore > this.best;
+
+    if (isNewBest) {
+      this.best = finalScore;
       localStorage.setItem('hayde_best', this.best);
     }
 
-    document.getElementById('go-score').textContent = Math.floor(this.score);
-    document.getElementById('go-dist').textContent  = Math.floor(this.distance) + ' m';
-    document.getElementById('go-best').textContent  = this.best;
+    // Reset display values
+    const scoreEl = document.getElementById('go-score');
+    const distEl  = document.getElementById('go-dist');
+    const levelEl = document.getElementById('go-level');
+    const itemsEl = document.getElementById('go-items');
+    const bestEl  = document.getElementById('go-best');
+    const newBestEl = document.getElementById('go-new-best');
+
+    scoreEl.textContent = '0';
+    distEl.textContent  = '0 m';
+    levelEl.textContent = '1';
+    itemsEl.textContent = '0';
+    bestEl.textContent  = this.best;
+    newBestEl.classList.toggle('go-new-best-off', !isNewBest);
 
     setTimeout(() => {
       this.screens.show('gameover');
       this.hud.hide();
+
+      // Counting animation
+      const duration = 1200;
+      const startTime = performance.now();
+      const animate = (now) => {
+        const t = clamp((now - startTime) / duration, 0, 1);
+        const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        scoreEl.textContent = Math.floor(finalScore * ease);
+        distEl.textContent  = Math.floor(finalDist * ease) + ' m';
+        levelEl.textContent = Math.floor(1 + (finalLevel - 1) * ease);
+        itemsEl.textContent = Math.floor(finalItems * ease);
+        if (t < 1) requestAnimationFrame(animate);
+        else if (isNewBest) HapticsHelper.success();
+      };
+      requestAnimationFrame(animate);
     }, 900);
   }
 
@@ -1567,7 +1734,7 @@ class Game {
       this.particles.update(dt);
       return;
     }
-    if (this.state === 'MENU') {
+    if (this.state === 'MENU' || this.state === 'LOADING') {
       this._idleT += dt;
       return;
     }
@@ -1617,6 +1784,7 @@ class Game {
       const pos = this.track.project(this.player.laneT, CFG.PLAYER_D, this.cw, this.ch);
       this.particles.collectPop(pos.x, pos.y - this.ch * 0.07, emoji);
       this.player.collect(emoji);
+      this._itemsCollected++;
 
       // Combo tracking: collecting within 2.5 seconds keeps combo alive
       const now = this.elapsed;
@@ -1639,6 +1807,9 @@ class Game {
       // Trigger combo effects on level-up
       if (this.comboLevel > prevLevel && this.comboLevel > 0) {
         this.audio.comboSound(this.comboLevel);
+        HapticsHelper.success();
+        const comboFlashColors = ['', 'rgba(255,214,10,0.12)', 'rgba(255,149,0,0.12)', 'rgba(255,59,48,0.12)', 'rgba(191,90,242,0.12)', 'rgba(255,45,85,0.15)'];
+        this._flash(comboFlashColors[this.comboLevel] || 'rgba(255,214,10,0.12)', 0.15);
         const comboNames = ['', 'x2 COMBO!', 'x3 SUPER!', 'x5 MEGA!', 'x8 ULTRA!', 'x10 LEGENDARY!'];
         const comboEmojis = ['', '🔥', '💥', '⚡', '🌟', '👑'];
         this.toast.show(`${comboEmojis[this.comboLevel]} ${comboNames[this.comboLevel]} ${comboEmojis[this.comboLevel]}`, 1400);
@@ -1657,8 +1828,10 @@ class Game {
       if (special) {
         this.toast.show(`מבצע! ${emoji} +${CFG.SCORE_SPECIAL * this.comboMultiplier} pts ⭐`, 1200);
         this.audio.levelUp();
+        HapticsHelper.medium();
       } else {
         this.audio.haydeCollect();
+        HapticsHelper.light();
       }
     }
 
@@ -1702,6 +1875,8 @@ class Game {
     this.hud.setScore(this.score);
     this.hud.setDist(this.distance);
     this.hud.setNOS(this.nosCharge, this.nosActive);
+    this.hud.setLevel(this._getTheme().name);
+    this.hud.setCombo(this.comboLevel, this.comboCount);
   }
 
   // ── Render ────────────────────────────────────────────────────
@@ -1709,22 +1884,38 @@ class Game {
     const ctx = this.ctx;
     const { cw, ch, dpr } = this;
 
-    // Reset transform to DPR scale at start of every frame
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cw, ch);
+    // Update screen effects timers
+    if (this._shakeT > 0) this._shakeT -= dt;
+    if (this._flashT > 0) this._flashT -= dt;
+    if (this._pulseT > 0) this._pulseT -= dt;
+
+    // Apply screen shake + NOS pulse via canvas transform
+    let sx = 0, sy = 0, sc = 1;
+    if (this._shakeT > 0) {
+      const intensity = this._shakeAmp * (this._shakeT / 0.5);
+      sx = (Math.random() - 0.5) * intensity * 2;
+      sy = (Math.random() - 0.5) * intensity * 2;
+    }
+    if (this._pulseT > 0) {
+      sc = 1 + 0.02 * (this._pulseT / 0.2);
+    }
+
+    // Reset transform with shake + pulse applied
+    ctx.setTransform(dpr * sc, 0, 0, dpr * sc, sx * dpr + (cw * dpr * (1 - sc) * 0.5), sy * dpr + (ch * dpr * (1 - sc) * 0.5));
+    ctx.clearRect(-20, -20, cw + 40, ch + 40);
 
     // Determine render speed for track animation
     const effSpeed = (this.state === 'PLAYING' && this.nosActive)
       ? this.speed * CFG.NOS_SPEED
       : this.speed;
     const trackSpeed = (this.state === 'PLAYING') ? effSpeed
-      : (this.state === 'MENU' || this.state === 'PAUSED') ? 0.12
+      : (this.state === 'MENU' || this.state === 'PAUSED' || this.state === 'LOADING') ? 0.12
       : 0.06; // slow on gameover
 
     const theme = this._getTheme();
     this.track.draw(ctx, cw, ch, dt, trackSpeed, this.nosActive && this.state === 'PLAYING', theme, this.level);
 
-    if (this.state === 'MENU') {
+    if (this.state === 'MENU' || this.state === 'LOADING') {
       this._renderMenuIdle(ctx, cw, ch);
       return;
     }
@@ -1775,14 +1966,43 @@ class Game {
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, cw, ch);
     }
+
+    // Screen flash overlay (death, combo, NOS)
+    if (this._flashT > 0) {
+      ctx.save();
+      ctx.globalAlpha = this._flashT / 0.2;
+      ctx.fillStyle = this._flashColor;
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.restore();
+    }
   }
 
   _renderMenuIdle(ctx, cw, ch) {
-    // Animated idle cart in the distance
     const t  = this._idleT;
     const cx = cw * 0.5;
-    const cy = ch * 0.60 + Math.sin(t * 1.4) * 8;
 
+    // Floating ambient particles
+    const theme = this._getTheme();
+    const [gr, gg, gb] = theme.grid;
+    for (const p of this._menuParticles) {
+      p.x += p.vx * 0.016;
+      p.y += p.vy * 0.016;
+      if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
+      if (p.x < -0.05 || p.x > 1.05) p.x = Math.random();
+      const flicker = 0.6 + Math.sin(t * 2 + p.phase) * 0.4;
+      ctx.save();
+      ctx.globalAlpha = p.alpha * flicker;
+      ctx.fillStyle = `rgb(${gr},${gg},${gb})`;
+      ctx.shadowBlur = p.size * 3;
+      ctx.shadowColor = `rgb(${gr},${gg},${gb})`;
+      ctx.beginPath();
+      ctx.arc(p.x * cw, p.y * ch, p.size, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Animated idle cart in the distance
+    const cy = ch * 0.60 + Math.sin(t * 1.4) * 8;
     ctx.save();
     ctx.globalAlpha = 0.22;
     ctx.translate(cx, cy);
