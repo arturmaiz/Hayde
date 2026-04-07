@@ -1,0 +1,32 @@
+{
+  "name": "hayde",
+  "version": "1.0.0",
+  "description": "Best game ever",
+  "main": "script.js",
+  "scripts": {
+    "copy-web": "mkdir -p www && cp index.html style.css script.js manifest.json icon.svg www/",
+    "cap-sync": "npm run copy-web && npx cap sync",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:45875/git/arturmaiz/Hayde"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.3.0",
+    "@capacitor/screen-orientation": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}

@@ -1,7 +1,7 @@
 {
-  "name": "Dash — Endless Runner",
-  "short_name": "Dash",
-  "description": "A polished endless runner game",
+  "name": "Hayde — Supermarket Runner",
+  "short_name": "Hayde",
+  "description": "Israeli supermarket endless runner game",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "landscape",

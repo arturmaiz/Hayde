@@ -14,8 +14,19 @@
 <body>
   <canvas id="game-canvas"></canvas>
 
+  <!-- ── LOADING / INTRO ─────────────────────── -->
+  <div id="screen-loading" class="screen active loading-screen">
+    <div class="loading-content">
+      <div class="loading-cart">🛒</div>
+      <div class="loading-title">
+        <span class="lt-char">H</span><span class="lt-char">A</span><span class="lt-char">Y</span><span class="lt-char">D</span><span class="lt-char">E</span>
+      </div>
+      <div class="loading-sub">TAP TO START</div>
+    </div>
+  </div>
+
   <!-- ── MENU ────────────────────────────────── -->
-  <div id="screen-menu" class="screen active">
+  <div id="screen-menu" class="screen">
     <div class="card">
       <div class="logo">
         <div class="logo-icon-ring"><span class="logo-emoji">🛒</span></div>
@@ -87,6 +98,7 @@
     <div class="card">
       <div class="go-skull">☠️</div>
       <h2 class="go-title">Wiped Out</h2>
+      <div id="go-new-best" class="go-new-best go-new-best-off">NEW BEST!</div>
       <div class="stats-block">
         <div class="stat-row">
           <span class="stat-lbl">Score</span>
@@ -95,6 +107,14 @@
         <div class="stat-row">
           <span class="stat-lbl">Distance</span>
           <span class="stat-val" id="go-dist">0 m</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-lbl">Level</span>
+          <span class="stat-val" id="go-level">1</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-lbl">Items</span>
+          <span class="stat-val" id="go-items">0</span>
         </div>
         <div class="stat-row stat-row-best">
           <span class="stat-lbl">Best</span>
@@ -113,6 +133,8 @@
     <div class="hud-left">
       <div class="hud-score" id="hud-score">0</div>
       <div class="hud-dist"  id="hud-dist">0 m</div>
+      <div class="hud-level" id="hud-level"></div>
+      <div class="hud-combo hud-combo-off" id="hud-combo"></div>
     </div>
     <div class="hud-center">
       <button class="nos-wrap" id="nos-btn" aria-label="Activate NOS">
