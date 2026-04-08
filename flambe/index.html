@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Flambé">
+  <meta name="theme-color" content="#1a0a00">
+  <title>Flambé: Merge &amp; Cook</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+
+  <!-- MENU SCREEN -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-bg" id="menu-bg"></div>
+    <div class="card menu-card">
+      <div class="logo">
+        <div class="logo-fire">🔥</div>
+        <h1 class="logo-title">FLAMBÉ</h1>
+        <p class="logo-sub">Merge &amp; Cook</p>
+      </div>
+      <div id="menu-best" class="best-chip hidden">
+        <span class="best-chip-label">BEST</span>
+        <span class="best-chip-val" id="menu-best-val">0</span>
+      </div>
+      <div class="btn-stack">
+        <button class="btn btn-fire" id="btn-play">🍳 Start Cooking!</button>
+        <button class="btn btn-ghost" id="btn-how">How to Play</button>
+      </div>
+      <div class="tier-preview">
+        <span>🥚</span><span>→</span><span>🍳</span><span>→</span>
+        <span>🔥</span><span>→</span><span>🏆</span>
+      </div>
+      <p class="tier-hint">12 tiers of delicious chaos</p>
+    </div>
+  </div>
+
+  <!-- HOW TO PLAY SCREEN -->
+  <div id="screen-tutorial" class="screen">
+    <div class="card tut-card">
+      <h2 class="card-title">How to Play</h2>
+      <ul class="tut-list">
+        <li><span class="tut-icon">👆</span><span>Swipe in any direction to slide all tiles</span></li>
+        <li><span class="tut-icon">🥚🥚</span><span>Two matching tiles merge into the next dish</span></li>
+        <li><span class="tut-icon">📈</span><span>Reach the <strong>🏆 ULTIMATE FLAMBÉ</strong> to win!</span></li>
+        <li><span class="tut-icon">🚫</span><span>Game over when no moves are left</span></li>
+      </ul>
+      <button class="btn btn-fire" id="btn-tut-go">Let's Cook! 🍳</button>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="screen-game" class="screen">
+    <div class="game-layout">
+      <!-- HUD -->
+      <div class="hud">
+        <div class="hud-title">🔥 FLAMBÉ</div>
+        <div class="hud-scores">
+          <div class="score-box">
+            <div class="score-label">SCORE</div>
+            <div class="score-val" id="score">0</div>
+          </div>
+          <div class="score-box">
+            <div class="score-label">BEST</div>
+            <div class="score-val" id="best">0</div>
+          </div>
+        </div>
+        <button class="btn-new" id="btn-new">New</button>
+      </div>
+
+      <!-- GRID -->
+      <div class="grid-wrap" id="grid-wrap">
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <!-- HINT -->
+      <p class="play-hint">Swipe to merge matching dishes</p>
+
+      <!-- MENU LINK -->
+      <button class="btn-menu-link" id="btn-menu-link">← Menu</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER OVERLAY -->
+  <div id="overlay-gameover" class="overlay hidden">
+    <div class="card overlay-card">
+      <div class="overlay-icon">😵‍💫</div>
+      <h2 class="overlay-title">Kitchen Destroyed!</h2>
+      <p class="overlay-sub">The chaos got out of hand.</p>
+      <div id="go-newbest" class="new-best hidden">🏅 NEW BEST!</div>
+      <div class="overlay-stats">
+        <div class="stat-row"><span>Score</span><span id="go-score">0</span></div>
+        <div class="stat-row"><span>Best Tile</span><span id="go-tile">🥚</span></div>
+        <div class="stat-row gold-row"><span>Best Score</span><span id="go-best">0</span></div>
+      </div>
+      <div class="btn-stack">
+        <button class="btn btn-fire" id="btn-retry">Cook Again 🔥</button>
+        <button class="btn btn-ghost" id="btn-gameover-menu">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIN OVERLAY -->
+  <div id="overlay-win" class="overlay hidden">
+    <div class="card overlay-card">
+      <div class="overlay-icon">🏆🔥</div>
+      <h2 class="overlay-title">ULTIMATE FLAMBÉ!</h2>
+      <p class="overlay-sub">You reached the legendary dish!</p>
+      <div class="overlay-stats">
+        <div class="stat-row gold-row"><span>Score</span><span id="win-score">0</span></div>
+      </div>
+      <div class="btn-stack">
+        <button class="btn btn-fire" id="btn-keep-going">Keep Cooking! 🍳</button>
+        <button class="btn btn-ghost" id="btn-win-new">New Game</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
