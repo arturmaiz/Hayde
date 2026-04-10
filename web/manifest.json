@@ -1,0 +1,36 @@
+{
+    "name": "Flambe - Kitchen Runner",
+    "short_name": "Flambe",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#FFF3E0",
+    "theme_color": "#FF8F00",
+    "description": "A cooking-themed endless runner game. Run through the kitchen, dodge obstacles, collect ingredients!",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "categories": ["games", "entertainment"],
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

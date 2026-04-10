@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Hayde</string>
-    <string name="title_activity_main">Hayde</string>
-    <string name="package_name">com.hayde.game</string>
-    <string name="custom_url_scheme">com.hayde.game</string>
-</resources>
